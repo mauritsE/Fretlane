@@ -1,6 +1,7 @@
 import type { NewSongInput, Song } from '../shared/types.ts';
 import { parseYouTubeId } from '../shared/util.ts';
 import { api, fileToBase64 } from './api.ts';
+import { APP_NAME } from '../shared/brand.ts';
 import { h, toast } from './dom.ts';
 
 export async function renderLibrary(root: HTMLElement): Promise<void> {
@@ -24,7 +25,7 @@ export async function renderLibrary(root: HTMLElement): Promise<void> {
     h(
       'header.topbar',
       {},
-      h('a.brand', { href: '#/' }, h('span.logo', {}, '♪'), 'Songstarr'),
+      h('a.brand', { href: '#/' }, h('img.logo', { src: '/icon.svg', alt: '' }), APP_NAME),
       search,
       h('button.primary', { onclick: () => openSongDialog(null, reload) }, '+ Add song'),
     ),
@@ -36,7 +37,7 @@ export async function renderLibrary(root: HTMLElement): Promise<void> {
     try {
       songs = await api.listSongs();
     } catch (err) {
-      list.replaceChildren(h('p.empty', {}, `Could not reach the Songstarr server: ${(err as Error).message}. Is "npm run dev" running?`));
+      list.replaceChildren(h('p.empty', {}, `Could not reach the Fretlane server: ${(err as Error).message}. Is "npm run dev" running?`));
       return;
     }
     draw();

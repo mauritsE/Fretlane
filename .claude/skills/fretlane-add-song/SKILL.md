@@ -1,9 +1,9 @@
 ---
-name: songstarr-add-song
-description: Add songs to the Songstarr library (tab file, tab URL or pasted ASCII tab, plus optional YouTube video) and set up tab-to-video sync pins. Use when the user wants to import/add a song or tab, link a YouTube video to a song, fix a song whose cursor is out of sync, or bulk-import a folder of tabs.
+name: fretlane-add-song
+description: Add songs to the Fretlane library (tab file, tab URL or pasted ASCII tab, plus optional YouTube video) and set up tab-to-video sync pins. Use when the user wants to import/add a song or tab, link a YouTube video to a song, fix a song whose cursor is out of sync, or bulk-import a folder of tabs.
 ---
 
-# Adding songs to Songstarr
+# Adding songs to Fretlane
 
 The app must be running (`npm run dev` or `npm start`); both expose the API at `http://localhost:5173/api`.
 

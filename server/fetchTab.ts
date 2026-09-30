@@ -1,4 +1,5 @@
 import { HttpError } from './library.ts';
+import { APP_NAME } from '../shared/brand.ts';
 
 /**
  * Downloads a tab file from any http(s) URL on behalf of the browser (which would otherwise be
@@ -19,7 +20,7 @@ export async function fetchTab(rawUrl: string, maxBytes: number): Promise<{ byte
     res = await fetch(url, {
       redirect: 'follow',
       signal: AbortSignal.timeout(20_000),
-      headers: { 'user-agent': 'Songstarr/0.1 (+local tab player)' },
+      headers: { 'user-agent': `${APP_NAME}/1 (+local tab player)` },
     });
   } catch (err) {
     throw new HttpError(502, `Could not download tab: ${(err as Error).message}`);

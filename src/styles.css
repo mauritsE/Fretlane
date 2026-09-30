@@ -64,11 +64,7 @@ input:focus, textarea:focus, select:focus { outline: 2px solid color-mix(in srgb
   z-index: 20;
 }
 .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 17px; color: var(--text); }
-.logo {
-  display: inline-grid; place-items: center;
-  width: 28px; height: 28px; border-radius: 7px;
-  background: var(--accent); color: var(--accent-ink); font-size: 16px;
-}
+.logo { width: 34px; height: 34px; display: block; }
 .back { font-size: 20px; color: var(--muted); }
 .search { flex: 1; max-width: 520px; }
 .song-heading { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

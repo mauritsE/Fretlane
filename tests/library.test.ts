@@ -9,7 +9,7 @@ const ASCII = ['e|--0--3--|', 'B|--1--0--|', 'G|--0--0--|', 'D|--2--0--|', 'A|--
 
 let root: string;
 beforeEach(async () => {
-  root = await fs.mkdtemp(path.join(os.tmpdir(), 'songstarr-test-'));
+  root = await fs.mkdtemp(path.join(os.tmpdir(), 'fretlane-test-'));
 });
 afterEach(async () => {
   await fs.rm(root, { recursive: true, force: true });

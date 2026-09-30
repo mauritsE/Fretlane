@@ -1,16 +1,17 @@
 /**
- * Add a song to a running Songstarr (npm run dev / npm start) from the command line.
+ * Add a song to a running Fretlane (npm run dev / npm start) from the command line.
  *
  *   npm run add-song -- <tab file or URL> [--title "..."] [--artist "..."] [--youtube <url>] [--tags a,b]
  *   npm run add-song -- ./tabs/my-song.gp5 --youtube https://youtu.be/XXXXXXXXXXX --tags rock
  *
- * Env: SONGSTARR_URL (default http://localhost:5173)
+ * Env: FRETLANE_URL (default http://localhost:5173)
  */
 import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import type { NewSongInput, Song } from '../shared/types.ts';
+import { APP_NAME, envVar } from '../shared/brand.ts';
 
-const BASE = process.env.SONGSTARR_URL ?? 'http://localhost:5173';
+const BASE = envVar('URL') ?? 'http://localhost:5173';
 const args = process.argv.slice(2);
 const opt = (name: string) => {
   const i = args.indexOf(`--${name}`);
@@ -46,6 +47,6 @@ try {
   console.log(`Open: ${BASE}/#/song/${encodeURIComponent(body.id)}`);
 } catch (err) {
   const msg = (err as Error).message;
-  console.error(msg.includes('fetch failed') ? `Songstarr is not running at ${BASE}. Start it with "npm run dev" or "npm start".` : `Failed: ${msg}`);
+  console.error(msg.includes('fetch failed') ? `${APP_NAME} is not running at ${BASE}. Start it with "npm run dev" or "npm start".` : `Failed: ${msg}`);
   process.exit(1);
 }

@@ -4,6 +4,7 @@ import path from 'node:path';
 import { HttpError, Library, type SeedSource } from './library.ts';
 import { fetchTab } from './fetchTab.ts';
 import type { NewSongInput, SongPatch } from '../shared/types.ts';
+import { APP_ID } from '../shared/brand.ts';
 
 const MAX_BODY = 30 * 1024 * 1024;
 
@@ -56,6 +57,8 @@ export interface ServerOptions {
 
 export interface RunningServer {
   url: string;
+  /** The port actually bound (differs from the requested one when port 0 was passed). */
+  port: number;
   close(): Promise<void>;
 }
 
@@ -123,8 +126,8 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
       return;
     }
 
-    // `app` lets the launcher recognise an already-running Songstarr on this port.
-    if (parts[1] === 'health') return send(res, 200, { ok: true, app: 'songstarr', library: opts.libraryDir });
+    // `app` lets tools (and the smoke test) recognise this server.
+    if (parts[1] === 'health') return send(res, 200, { ok: true, app: APP_ID, library: opts.libraryDir });
     throw new HttpError(404, 'Unknown API route');
   }
 
@@ -164,8 +167,11 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
     });
   });
   const host = opts.host === '127.0.0.1' || opts.host === '0.0.0.0' ? 'localhost' : opts.host;
+  const address = server.address();
+  const port = typeof address === 'object' && address ? address.port : opts.port;
   return {
-    url: `http://${host}:${opts.port}`,
+    url: `http://${host}:${port}`,
+    port,
     close: () => new Promise((resolve) => server.close(() => resolve())),
   };
 }

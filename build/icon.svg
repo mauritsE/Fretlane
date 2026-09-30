@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffc861"/>
+      <stop offset="1" stop-color="#e8912a"/>
+    </linearGradient>
+    <linearGradient id="lane" gradientUnits="userSpaceOnUse" x1="190" y1="0" x2="834" y2="0">
+      <stop offset="0" stop-color="#1b1b1b" stop-opacity="0.15"/>
+      <stop offset="0.5" stop-color="#1b1b1b" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#1b1b1b" stop-opacity="0.15"/>
+    </linearGradient>
+  </defs>
+  <!-- macOS-style squircle with margin -->
+  <rect x="100" y="100" width="824" height="824" rx="190" fill="url(#bg)"/>
+  <!-- six lanes (strings) -->
+  <g stroke="url(#lane)" stroke-linecap="round">
+    <line x1="190" y1="320" x2="834" y2="320" stroke-width="10"/>
+    <line x1="190" y1="396" x2="834" y2="396" stroke-width="12"/>
+    <line x1="190" y1="472" x2="834" y2="472" stroke-width="14"/>
+    <line x1="190" y1="548" x2="834" y2="548" stroke-width="16"/>
+    <line x1="190" y1="624" x2="834" y2="624" stroke-width="18"/>
+    <line x1="190" y1="700" x2="834" y2="700" stroke-width="20"/>
+  </g>
+  <!-- play-head -->
+  <rect x="566" y="250" width="22" height="520" rx="11" fill="#c43d2f"/>
+  <!-- notes on the lanes -->
+  <g fill="#1b1b1b">
+    <circle cx="330" cy="624" r="34"/>
+    <circle cx="450" cy="472" r="34"/>
+    <circle cx="700" cy="396" r="34"/>
+  </g>
+  <circle cx="577" cy="548" r="44" fill="#fff4dc" stroke="#1b1b1b" stroke-width="14"/>
+</svg>

@@ -1,22 +1,30 @@
-## Download Songstarr
+## Download Fretlane
 
-No installation or technical knowledge needed. Download the file for your computer, unzip it, and open **START HERE.txt**.
+Play along with guitar, bass and drum tabs, synced to YouTube videos. Everything runs on your own computer, and nothing needs to be set up.
 
-| Your computer | Download |
-| --- | --- |
-| **Windows** 10 / 11 | `Songstarr-…-windows-x64.zip` |
-| **Mac** with Apple chip (M1, M2, M3, M4…) | `Songstarr-…-macos-arm64.zip` |
-| **Mac** with Intel chip (older Macs) | `Songstarr-…-macos-x64.zip` |
-| **Linux** (most PCs) | `Songstarr-…-linux-x64.zip` |
-| **Linux** on ARM (e.g. Raspberry Pi 4/5, 64-bit) | `Songstarr-…-linux-arm64.zip` |
+| Your computer | Download | Then |
+| --- | --- | --- |
+| **Windows** 10 / 11 | `Fretlane-…-windows-setup.exe` | Double-click it. Fretlane installs and opens by itself, with a shortcut on your desktop and in the Start menu. |
+| **Mac** with Apple chip (M1, M2, M3, M4…) | `Fretlane-…-mac-arm64.zip` | Double-click the zip, then drag **Fretlane** into your **Applications** folder. |
+| **Mac** with Intel chip (older Macs) | `Fretlane-…-mac-x64.zip` | Same as above. |
+| **Linux** | `Fretlane-…-linux-x86_64.AppImage` | Right-click → Properties → allow executing as a program, then double-click it. |
 
 Not sure which Mac you have? Apple menu → **About This Mac**. "Chip: Apple M…" means Apple chip. "Processor: Intel" means Intel.
 
-### Quick start
-1. Unzip the download.
-2. Double-click **Songstarr** (on Windows: **Songstarr.exe**).
-3. Your browser opens Songstarr. Keep the small Songstarr window open while you play, and close it to quit.
+### Opening it the first time
 
-The first time, Windows or macOS will warn you that the app is from an unidentified developer. Songstarr is a free hobby project and isn't registered with Microsoft or Apple. **START HERE.txt** explains how to open it anyway (it takes about 20 seconds, once).
+Fretlane is a free hobby project and isn't registered with Apple or Microsoft, so the first time you open it your computer asks whether you trust it. You only have to do this once.
 
-Your songs are saved in a **Songstarr** folder in your home folder, so updating to a newer version keeps your library.
+- **Mac:** open Fretlane. When macOS says it can't verify the app, click **Done**. Then go to **System Settings → Privacy & Security**, scroll down to "Fretlane was blocked", click **Open Anyway** and confirm. On older macOS versions you can instead right-click Fretlane → **Open** → **Open**.
+- **Windows:** if a blue "Windows protected your PC" box appears, click **More info** → **Run anyway**.
+
+### Using it
+
+- Click a song to open it. Three short demo songs are included.
+- **+ Add song:** use a Guitar Pro file (.gp, .gp5, .gpx…), a MusicXML file, a link to a tab file, or a plain-text tab pasted in. Optionally add the song's YouTube link.
+- **⇆ Sync:** pause the video on the first beat and click **Pin**, and the tab follows the video.
+- Quit like any other app (**Fretlane → Quit** on Mac, or close the window).
+
+Your songs are saved in a **Fretlane** folder in your home folder (**File → Show Songs Folder**). Updating to a newer version keeps your library.
+
+**Coming from Songstarr?** Fretlane is the same app with a new name. Your songs are moved over automatically the first time you open it.
