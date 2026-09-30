@@ -23,11 +23,15 @@ description: Build, verify and publish Fretlane's desktop app (Electron + electr
 4. `APPIMAGE_EXTRACT_AND_RUN=1 xvfb-run -a node release/smoke.mjs release/out/Fretlane-*.AppImage -- --no-sandbox` launches the built package.
 5. macOS and Windows can only be verified in CI. Run the Release workflow on the branch with `publish: false` (`actions_run_trigger` → `run_workflow`, `release.yml`, ref = the branch) and wait until every job is green:
    - `macos`: `codesign --verify --deep --strict`, then launches the arm64 app natively and the x64 app via Rosetta.
-   - `windows`: silent NSIS install (`/S`), then launches the installed `Fretlane.exe`.
+   - `macos-intel`: native launch of the Intel app on `macos-15-intel`.
+   - `windows`: launches the unpacked app, then does a silent NSIS install (`/S`), stops any auto-started copy, and launches the installed `Fretlane.exe`.
 6. Look at `e2e/screenshots/1*-desktop-*.png`.
 
 ## Gotchas (learned the hard way)
 - **Never ship a package that hasn't been launched on its own OS.** v0.1.0's Mac builds (Bun cross-compiled) had an invalid ad-hoc signature and would not start. A signature being *present* proves nothing: verify it with `codesign --verify --strict` on a Mac, or recompute the CodeDirectory page hashes.
+- **Smoke-test isolation:** give each launch its own `FRETLANE_LIBRARY` and `FRETLANE_USER_DATA` temp folders. Never fake `HOME`/`USERPROFILE`: on Windows, Chromium then crashes at start with `0x80000003` and prints nothing. macOS ignores `HOME` for the profile folder and the single-instance lock, so a second launch hangs behind the first one's leftovers.
+- Kill the whole process tree after a launch (`taskkill /T /F` on Windows, `kill -<pgid>` elsewhere). Leftover "Fretlane Helper" processes block the next launch.
+- The x64 Mac app under Rosetta on an arm64 runner needs a long timeout (`--timeout 300`, plus `--disable-gpu` for that launch). The `macos-15-intel` runner launches it natively in about 3 s; that job is diagnostic (`continue-on-error`).
 - Running as root, as in this sandbox, needs `--no-sandbox` for Electron. CI Linux needs `xvfb-run`, and AppImages need `APPIMAGE_EXTRACT_AND_RUN=1` because there is no FUSE.
 - The Electron binary download can be cut off by the sandbox proxy ("assert(!this.paused)" from undici). Re-run `node node_modules/electron/install.js` until `node_modules/electron/path.txt` exists.
 - Inside Playwright `electronApp.evaluate()`, don't define named helper functions: tsx injects `__name()`, which doesn't exist there.
