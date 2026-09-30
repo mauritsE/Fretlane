@@ -122,6 +122,10 @@ Rendering and playback are done by [alphaTab](https://alphatab.net) (MPL-2.0). M
 
 `.claude/skills/` holds project skills with the repeatable know-how: adding and syncing songs, verifying changes, and the alphaTab integration details. `CLAUDE.md` describes the architecture and which model to use for which kind of task.
 
+## Support Songstarr
+
+Songstarr is free and open source. If it helps you learn songs and you'd like to say thanks, use the **Sponsor** button at the top of the [GitHub page](https://github.com/mauritsE/Songstarr). Bug reports and ideas are just as welcome.
+
 ## License
 
 MIT, see [LICENSE](LICENSE).
