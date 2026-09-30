@@ -1,7 +1,7 @@
 // Launches a packaged Fretlane desktop app (with its own temporary library and profile) and checks it
 // really works: the window loads the UI, the local server answers, the demo library is seeded and
 // the soundfont is packaged. Dependency-free so CI can run it on any OS with plain Node:
-//   node release/smoke.mjs <path/to/app executable> [--arch x86_64] [-- extra app args]
+//   node release/smoke.mjs <path/to/app executable> [--arch x86_64] [--timeout 90] [-- extra app args]
 //   (--arch runs it via Rosetta on macOS; on Linux run under xvfb-run and pass -- --no-sandbox)
 import { spawn, spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -13,6 +13,9 @@ const dashDash = argv.indexOf('--');
 const appArgs = dashDash >= 0 ? argv.splice(dashDash).slice(1) : [];
 const archIdx = argv.indexOf('--arch');
 const arch = archIdx >= 0 ? argv.splice(archIdx, 2)[1] : undefined;
+const timeoutIdx = argv.indexOf('--timeout');
+// Seconds to wait for the window. Rosetta's first translation of Electron can take minutes on CI.
+const timeoutSec = timeoutIdx >= 0 ? Number(argv.splice(timeoutIdx, 2)[1]) : 90;
 if (!argv[0]) {
   console.error('Usage: node release/smoke.mjs <executable> [--arch x86_64] [-- app args]');
   process.exit(2);
@@ -72,10 +75,11 @@ async function finish(code, msg) {
 const fail = (msg) => finish(1, `FAIL ${msg}`);
 
 // Wait until the window reports it has loaded the UI (the app prints FRETLANE_READY <url>).
-const deadline = Date.now() + 90_000;
+const started = Date.now();
+const deadline = started + timeoutSec * 1000;
 while (!/FRETLANE_READY/.test(output)) {
   if (exited) await fail(`the app exited before its window loaded (${exited})`);
-  if (Date.now() > deadline) await fail('the app window did not load within 90s');
+  if (Date.now() > deadline) await fail(`the app window did not load within ${timeoutSec}s`);
   await new Promise((r) => setTimeout(r, 300));
 }
 
@@ -96,4 +100,4 @@ if (!tab.ok) await fail(`could not load a demo tab (${tab.status})`);
 const sf = await fetch(`${base}/soundfont/sonivox.sf2`);
 if (!sf.ok || (await sf.arrayBuffer()).byteLength < 100_000) await fail('soundfont missing from the package');
 
-await finish(0, `PASS ${path.basename(exe)}${arch ? ` (${arch})` : ''}: window loaded, server ok, ${songs.length} demo songs, soundfont present`);
+await finish(0, `PASS ${path.basename(exe)}${arch ? ` (${arch})` : ''}: window loaded after ${((Date.now() - started) / 1000).toFixed(1)}s, server ok, ${songs.length} demo songs, soundfont present`);

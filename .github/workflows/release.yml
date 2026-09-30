@@ -67,7 +67,8 @@ jobs:
           done
           node release/smoke.mjs check-arm64/Fretlane.app/Contents/MacOS/Fretlane
           if arch -x86_64 /usr/bin/true 2>/dev/null; then
-            node release/smoke.mjs check-x64/Fretlane.app/Contents/MacOS/Fretlane --arch x86_64
+            # Rosetta translates Electron on first launch, which can take minutes on a CI machine.
+            node release/smoke.mjs check-x64/Fretlane.app/Contents/MacOS/Fretlane --arch x86_64 --timeout 300 -- --disable-gpu
           else
             echo "::warning::Rosetta is not available on this runner; the Intel app was verified but not launched."
           fi
@@ -75,6 +76,29 @@ jobs:
         with:
           name: app-macos
           path: release/out/*-mac-*.zip
+
+  macos-intel:
+    # Launches the Intel build natively on an Intel Mac. Diagnostic for now: it doesn't block
+    # publishing until this runner type has proven reliable.
+    needs: macos
+    runs-on: macos-15-intel
+    continue-on-error: true
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          name: app-macos
+          path: out
+      - name: Launch the Intel app natively
+        run: |
+          set -euo pipefail
+          ditto -x -k out/Fretlane-*-mac-x64.zip check-x64
+          codesign --verify --deep --strict check-x64/Fretlane.app
+          node release/smoke.mjs check-x64/Fretlane.app/Contents/MacOS/Fretlane --timeout 180
 
   windows:
     runs-on: windows-latest
