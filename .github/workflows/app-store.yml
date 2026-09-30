@@ -37,10 +37,9 @@ jobs:
       - run: npm ci
       - run: npm run build && npm run build:desktop && node scripts/collect-licenses.mjs
       - name: Build the App Store flavour, unsigned
-        # A placeholder team ID: sandboxed Chromium names its Mach services after ElectronTeamID.
-        run: npx electron-builder --mac mas --arm64 --publish never -c.mas.identity=null -c.mas.provisioningProfile=null -c.mas.extendInfo.ElectronTeamID=ADHOCTEAM1
+        run: npx electron-builder --mac mas --arm64 --publish never -c.mas.identity=null -c.mas.provisioningProfile=null
       - name: Sign ad-hoc with the App Store entitlements
-        run: release/mas-adhoc-sign.sh release/out/mas-arm64/Fretlane.app ADHOCTEAM1
+        run: release/mas-adhoc-sign.sh release/out/mas-arm64/Fretlane.app
       - name: Launch it inside the App Sandbox
         run: node release/smoke.mjs release/out/mas-arm64/Fretlane.app/Contents/MacOS/Fretlane --sandboxed --timeout 120
       - name: Show the sandbox container
@@ -80,15 +79,13 @@ jobs:
           CSC_LINK: ${{ secrets.MAS_CERTIFICATES_P12 }}
           CSC_KEY_PASSWORD: ${{ secrets.MAS_CERTIFICATES_PASSWORD }}
           SIGNING_NAME: ${{ secrets.MAS_SIGNING_NAME }}
-        # ElectronTeamID (the team ID from "Name (TEAMID)") lets the sandboxed app register its Mach
-        # services under its application group; @electron/osx-sign adds the matching entitlement.
-        # Every upload needs a higher build number than the last one; the run number always grows.
-        run: |
-          team=$(sed -E 's/.*\(([A-Z0-9]{10})\).*/\1/' <<<"$SIGNING_NAME")
-          npx electron-builder --mac mas --universal --publish never \
-            -c.mas.identity="$SIGNING_NAME" \
-            -c.mas.extendInfo.ElectronTeamID="$team" \
-            -c.buildVersion=${{ github.run_number }}
+        # @electron/osx-sign writes ElectronTeamID (from the provisioning profile) into Info.plist and
+        # adds the "<TEAMID>.app.fretlane" app group, under which the sandboxed app registers its
+        # Mach services. Every upload needs a higher build number; the run number always grows.
+        run: >
+          npx electron-builder --mac mas --universal --publish never
+          -c.mas.identity="$SIGNING_NAME"
+          -c.buildVersion=${{ github.run_number }}
       - name: Verify the installer signature
         if: env.HAS_SECRETS == 'true'
         run: |
