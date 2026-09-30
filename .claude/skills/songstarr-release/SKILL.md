@@ -28,4 +28,11 @@ Only the Linux binary can actually run in the sandbox. Windows and macOS runs ca
 - Keep all user-facing text jargon-free: no "terminal", "port" or "server" in START HERE, except the localhost URL as a fallback.
 
 ## Publishing
-Bump `version` in package.json, commit, then `git tag vX.Y.Z && git push origin vX.Y.Z`. `.github/workflows/release.yml` builds and attaches the zips with `release/RELEASE_NOTES.md` as the description. Pushing a tag publishes a public release, so confirm with the user first. A manual `workflow_dispatch` run only uploads artifacts.
+Publishing makes a public release, so only do it when the user asks.
+1. Bump `version` in package.json through a normal PR, and merge it.
+2. Publish, either way:
+   - Tag push: `git tag vX.Y.Z && git push origin vX.Y.Z`.
+   - Actions: run the **Release** workflow on `main` with `publish: true`. With the GitHub MCP tools, that is `actions_run_trigger` (`run_workflow`, `release.yml`, ref `main`, inputs `{publish: true}`). The workflow creates tag `v<version>` on that commit plus the Release, with `release/RELEASE_NOTES.md` as the text.
+3. Watch the run (`actions_list list_workflow_runs`), then confirm with `list_releases` that the release exists and has 5 zip assets.
+
+**Learned:** cloud sessions can often only push their own working branch. `git push origin <tag>` fails with "remote end hung up / unexpected disconnect" while the proxy status shows no relay failure. Don't retry or route around it. Use the workflow_dispatch route instead, since it is the project's normal release mechanism.
