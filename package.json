@@ -1,0 +1,37 @@
+{
+  "name": "songstarr",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Open-source, local-first tab player: play along with Guitar Pro / MusicXML / alphaTex tabs synced to YouTube videos.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -n server,web -c blue,green \"npm:dev:server\" \"npm:dev:web\"",
+    "dev:server": "tsx watch server/index.ts",
+    "dev:web": "vite",
+    "build": "tsc --noEmit && vite build",
+    "start": "npm run build && tsx server/index.ts --serve-dist",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "add-song": "tsx scripts/add-song.ts",
+    "validate-tab": "tsx scripts/validate-tab.ts",
+    "e2e": "tsx e2e/smoke.ts"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@coderline/alphatab": "^1.8.4"
+  },
+  "devDependencies": {
+    "@coderline/alphatab-vite": "^1.8.4",
+    "@types/node": "^26.6.3",
+    "concurrently": "^10.0.5",
+    "playwright": "^1.63.0",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.1",
+    "vitest": "^5.0.3"
+  },
+  "repository": "github:mauritsE/Songstarr"
+}

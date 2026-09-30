@@ -1,0 +1,20 @@
+[
+  {
+    "file": "first-steps.atex",
+    "title": "First Steps",
+    "artist": "Songstarr demo",
+    "tags": ["demo", "beginner"]
+  },
+  {
+    "file": "rotterdam-riff.atex",
+    "title": "Rotterdam Riff",
+    "artist": "Songstarr demo",
+    "tags": ["demo", "riff", "multi-track"]
+  },
+  {
+    "file": "night-trail.txt",
+    "title": "Night Trail (ASCII import)",
+    "artist": "Songstarr demo",
+    "tags": ["demo", "ascii"]
+  }
+]

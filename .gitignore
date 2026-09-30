@@ -1,0 +1,10 @@
+node_modules/
+dist/
+library/
+!library/.gitkeep
+*.log
+.DS_Store
+test-results/
+public/font/
+public/soundfont/
+e2e/screenshots/
