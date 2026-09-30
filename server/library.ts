@@ -20,35 +20,39 @@ export class Library {
     this.tabsDir = path.join(root, 'tabs');
   }
 
-  async init(seedDir?: string): Promise<void> {
+  /** `seed` is a demo folder on disk, or an in-memory source (used by the standalone executable). */
+  async init(seed?: string | SeedSource): Promise<void> {
     await fs.mkdir(this.tabsDir, { recursive: true });
     try {
       this.songs = JSON.parse(await fs.readFile(this.dbFile, 'utf8')) as Song[];
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
       this.songs = [];
-      if (seedDir) await this.seed(seedDir);
+      if (seed) await this.seed(typeof seed === 'string' ? dirSeedSource(seed) : seed);
       await this.persist();
     }
   }
 
   /** First run: copy the bundled demo songs (original compositions) into the library. */
-  private async seed(seedDir: string): Promise<void> {
-    let manifest: Array<Omit<NewSongInput, 'tabFile'> & { file: string; syncPoints?: Song['syncPoints'] }>;
+  private async seed(source: SeedSource): Promise<void> {
+    let manifest: DemoEntry[];
     try {
-      manifest = JSON.parse(await fs.readFile(path.join(seedDir, 'demo-songs.json'), 'utf8'));
+      manifest = JSON.parse(new TextDecoder().decode(await source.read('demo-songs.json'))) as DemoEntry[];
     } catch {
       return;
     }
     for (const entry of manifest) {
-      const bytes = await fs.readFile(path.join(seedDir, entry.file));
-      const song = await this.add({
-        title: entry.title,
-        artist: entry.artist,
-        youtube: entry.youtube,
-        tags: entry.tags,
-        tabFile: { name: entry.file, dataBase64: bytes.toString('base64') },
-      }, false);
+      const bytes = await source.read(entry.file);
+      const song = await this.add(
+        {
+          title: entry.title,
+          artist: entry.artist,
+          youtube: entry.youtube,
+          tags: entry.tags,
+          tabFile: { name: entry.file, dataBase64: Buffer.from(bytes).toString('base64') },
+        },
+        false,
+      );
       if (entry.syncPoints) song.syncPoints = entry.syncPoints;
     }
   }
@@ -155,6 +159,17 @@ export class Library {
     });
     return this.writeQueue;
   }
+}
+
+type DemoEntry = Omit<NewSongInput, 'tabFile'> & { file: string; syncPoints?: Song['syncPoints'] };
+
+/** Where first-run demo songs come from: `demo-songs.json` plus the tab files it lists. */
+export interface SeedSource {
+  read(file: string): Promise<Uint8Array>;
+}
+
+export function dirSeedSource(dir: string): SeedSource {
+  return { read: async (file) => new Uint8Array(await fs.readFile(path.join(dir, path.basename(file)))) };
 }
 
 export class HttpError extends Error {

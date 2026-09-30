@@ -3,7 +3,8 @@
 A local-first, open-source Songsterr-style tab player. The browser app (vanilla TypeScript + Vite + alphaTab) talks to a small Node server that stores the library in `library/` as `songs.json` plus tab files.
 
 ## Architecture
-- `server/index.ts`: `node:http` server bound to 127.0.0.1. Serves `/api/songs` (CRUD + `/:id/tab`) and `/api/fetch?url=` (tab download proxy), plus `dist/` when started with `--serve-dist`.
+- `server/app.ts`: `startServer()`, the shared HTTP server. `server/index.ts` is the npm entry (dev/`npm start`); `release/launcher.ts` is the standalone-executable entry (assets embedded, library in `~/Songstarr`, auto-opens the browser).
+- `server/index.ts`: CLI entry for the `node:http` server bound to 127.0.0.1. Serves `/api/songs` (CRUD + `/:id/tab`) and `/api/fetch?url=` (tab download proxy), plus `dist/` when started with `--serve-dist`.
 - `server/library.ts`: JSON "database" with atomic writes, format detection, and ASCII→alphaTex conversion on import. Seeds `demo/` on first run.
 - `shared/`: pure, tested logic used by both sides (types, YouTube id parsing, format detection, `asciiTab.ts`, `sync.ts`).
 - `src/playerView.ts`: alphaTab setup and the YouTube ↔ alphaTab bridge (external-media mode plus sync points). `src/libraryView.ts`: library grid and the add/edit dialog.
@@ -16,6 +17,7 @@ A local-first, open-source Songsterr-style tab player. The browser app (vanilla 
 ## Skills (in `.claude/skills/`)
 - `songstarr-add-song`: importing songs and setting up sync pins.
 - `songstarr-verify`: the verification routine (typecheck, vitest, Playwright e2e with fake YouTube, production run) and environment gotchas.
+- `songstarr-release`: building and publishing the double-click packages for non-technical users.
 - `alphatab-integration`: alphaTab facts learned the hard way (Vite asset setup, external media API, sync points, alphaTex, the string-numbering quirk).
 
 ## Which model for which task
