@@ -3,6 +3,9 @@
 // the soundfont is packaged. Dependency-free so CI can run it on any OS with plain Node:
 //   node release/smoke.mjs <path/to/app executable> [--arch x86_64] [--timeout 90] [-- extra app args]
 //   (--arch runs it via Rosetta on macOS; on Linux run under xvfb-run and pass -- --no-sandbox)
+//   --sandboxed: for the Mac App Store build. A sandboxed app may only write inside its own
+//   container, so the library and profile stay in their default places and the test checks that
+//   the library really landed in ~/Library/Containers/<app id>.
 import { spawn, spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
@@ -20,6 +23,8 @@ if (!argv[0]) {
   console.error('Usage: node release/smoke.mjs <executable> [--arch x86_64] [-- app args]');
   process.exit(2);
 }
+const sandboxIdx = argv.indexOf('--sandboxed');
+const sandboxed = sandboxIdx >= 0 && !!argv.splice(sandboxIdx, 1);
 const exe = path.resolve(argv[0]);
 
 const port = 5199;
@@ -30,8 +35,7 @@ const env = {
   ...process.env,
   FRETLANE_PORT: String(port),
   FRETLANE_SMOKE: '1',
-  FRETLANE_LIBRARY: path.join(tmp, 'library'),
-  FRETLANE_USER_DATA: path.join(tmp, 'profile'),
+  ...(sandboxed ? {} : { FRETLANE_LIBRARY: path.join(tmp, 'library'), FRETLANE_USER_DATA: path.join(tmp, 'profile') }),
   // Chromium/Electron logs go to stderr, so a crash leaves evidence in the output.
   ELECTRON_ENABLE_LOGGING: '1',
   ELECTRON_ENABLE_STACK_DUMPING: '1',
@@ -91,13 +95,14 @@ try {
   await fail(`the library server did not answer on ${base}: ${e.message}`);
 }
 if (health.app !== 'fretlane') await fail(`unexpected health response ${JSON.stringify(health)}`);
+if (sandboxed && !health.library.includes('/Library/Containers/')) await fail(`library is not inside the sandbox container: ${health.library}`);
 const page = await (await fetch(`${base}/`)).text();
 if (!page.includes('<title>Fretlane</title>')) await fail('the UI page was not served');
 const songs = await (await fetch(`${base}/api/songs`)).json();
-if (!Array.isArray(songs) || songs.length < 3) await fail(`demo library not seeded (${JSON.stringify(songs).slice(0, 200)})`);
+if (!Array.isArray(songs) || songs.length < 20) await fail(`demo library and songbook not seeded (${JSON.stringify(songs).slice(0, 200)})`);
 const tab = await fetch(`${base}/api/songs/${encodeURIComponent(songs[0].id)}/tab`);
 if (!tab.ok) await fail(`could not load a demo tab (${tab.status})`);
 const sf = await fetch(`${base}/soundfont/sonivox.sf2`);
 if (!sf.ok || (await sf.arrayBuffer()).byteLength < 100_000) await fail('soundfont missing from the package');
 
-await finish(0, `PASS ${path.basename(exe)}${arch ? ` (${arch})` : ''}: window loaded after ${((Date.now() - started) / 1000).toFixed(1)}s, server ok, ${songs.length} demo songs, soundfont present`);
+await finish(0, `PASS ${path.basename(exe)}${arch ? ` (${arch})` : ''}: window loaded after ${((Date.now() - started) / 1000).toFixed(1)}s, server ok, ${songs.length} songs, soundfont present${sandboxed ? `, sandboxed library in ${health.library}` : ''}`);

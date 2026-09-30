@@ -29,6 +29,7 @@
     "tests",
     "release",
     "scripts",
+    "songbook",
     "e2e"
   ],
   "exclude": [

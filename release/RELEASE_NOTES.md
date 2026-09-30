@@ -20,7 +20,9 @@ Fretlane is a free hobby project and isn't registered with Apple or Microsoft, s
 
 ### Using it
 
-- Click a song to open it. Three short demo songs are included.
+- Click a song to open it. 22 well-known songs are included (Greensleeves, Für Elise, House of the Rising Sun and more), with guitar, bass and drums.
+- **☆** on a song makes it a favorite. **✓** marks it as done and moves it to the **Archive**.
+- **♩ Metronome** (or press **M**): tap tempo, accents, and one click for the song's own tempo.
 - **+ Add song:** use a Guitar Pro file (.gp, .gp5, .gpx…), a MusicXML file, a link to a tab file, or a plain-text tab pasted in. Optionally add the song's YouTube link.
 - **⇆ Sync:** pause the video on the first beat and click **Pin**, and the tab follows the video.
 - Quit like any other app (**Fretlane → Quit** on Mac, or close the window).

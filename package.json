@@ -117,6 +117,14 @@
       "category": "AudioVideo",
       "icon": "build/icon.png",
       "executableName": "fretlane"
+    },
+    "mas": {
+      "entitlements": "build/entitlements.mas.plist",
+      "entitlementsInherit": "build/entitlements.mas.inherit.plist",
+      "hardenedRuntime": false,
+      "provisioningProfile": "build/embedded.provisionprofile",
+      "type": "distribution",
+      "artifactName": "Fretlane-${version}-mac-app-store.${ext}"
     }
   }
 }

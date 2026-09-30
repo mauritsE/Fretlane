@@ -12,3 +12,4 @@ release/out/
 release/generated/
 desktop-dist/
 release/licenses/
+build/embedded.provisionprofile

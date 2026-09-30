@@ -5,8 +5,10 @@ An open-source, local-first tab player in the spirit of Songsterr. Load a tab fr
 - **Tabs from anywhere:** Guitar Pro 3–8 (`.gp3/.gp4/.gp5/.gpx/.gp`), MusicXML (`.xml/.musicxml/.mxl`), [alphaTex](https://alphatab.net/docs/alphatex/introduction), and plain-text ASCII tabs. You can upload a file, give a URL (the local server downloads it, so there are no CORS problems), or paste text.
 - **Plays along with YouTube:** the video is the clock. Play, pause, seek, speed and looping on either the tab or the video stay in sync.
 - **Sync editor:** pin bars to moments in the video. One pin sets the start. More pins let the tab follow tempo drift in a live recording. You can also press **T** on every downbeat to tap the song in.
-- **Library:** search, tags, per-song settings (last track, sync pins), all stored as plain files in `library/`.
-- **Practice tools:** speed 25–150%, loop a selection (drag across the tab, then press **L**), track switching, Tab / Score+Tab / Score views, page or horizontal layout, zoom. Without a video you also get the built-in synthesizer with mute/solo, metronome and count-in.
+- **22 songs out of the box:** a songbook of well-known public-domain tunes (Greensleeves, House of the Rising Sun, Für Elise, Canon in D, Romanza, In the Hall of the Mountain King, Drunken Sailor…), arranged for melody guitar, rhythm guitar, bass and drums, marked beginner or intermediate.
+- **Library:** search, tags, ★ favorites (listed first, with their own view) and an **archive** for songs you've learned (✓ Mark as done, ↺ to restore). Everything is stored as plain files in `library/`.
+- **Metronome (M):** tap tempo, accent, beats per bar, eighths/triplets/sixteenths, volume and beat lights. One click sets it to the open song's tempo at the current practice speed. It keeps running while you switch songs.
+- **Practice tools:** speed 25–150%, loop a selection (drag across the tab, then press **L**), track switching, Tab / Score+Tab / Score views, page or horizontal layout, zoom. Without a video you also get the built-in synthesizer with mute/solo, a click track that follows the tab, and count-in.
 
 Everything runs on your machine. Nothing is uploaded anywhere.
 
@@ -39,7 +41,7 @@ Or build once and run a single process:
 npm start          # builds, then serves app + API on http://localhost:5173
 ```
 
-On first start the library is seeded with three small **original** demo tabs, so you can try the player right away.
+On first start the library is seeded with three small **original** demo tabs and the 22-song songbook, so you can play right away. Songs added to the songbook in a later version are added to existing libraries too, once. A bundled song you delete stays deleted (`library/seeded.json` remembers).
 
 ## Adding songs
 
@@ -105,15 +107,20 @@ Packages land in `release/out/`:
 
 To publish, bump `version` in `package.json`. Then either push a tag (`git tag v0.2.0 && git push origin v0.2.0`), or open **Actions → Release → Run workflow** on `main` with **publish** ticked. The workflow builds on real Linux, macOS and Windows machines and launches every build (on Windows, through a silent install). It publishes the GitHub Release only if they all start, using `release/RELEASE_NOTES.md` as the text.
 
+**Mac App Store:** `.github/workflows/app-store.yml` builds the sandboxed App Store flavour and launches it inside the App Sandbox on every relevant PR. With Apple certificates in the repository secrets it also signs the installer and uploads it to App Store Connect. `appstore/SUBMITTING.md` walks through the Apple side step by step; the listing, privacy policy and screenshots are in `appstore/`.
+
 To rename the app, change `shared/brand.ts` and `productName` / `appId` in `package.json`.
 
 Project layout:
 
 ```
 server/    Node HTTP server: library storage (JSON + files), tab download, static hosting
-shared/    Pure TS used by both sides: types, YouTube URL parsing, format detection, ASCII→alphaTex, sync maths
+shared/    Pure TS used by both sides: types, YouTube URL parsing, format detection, ASCII→alphaTex, sync maths,
+           metronome timing, and the songbook generator (guitar fingering, chord shapes, band parts)
 src/       Browser app (vanilla TS + Vite): library view, player view, YouTube bridge
-demo/      Original demo tabs seeded into a fresh library
+demo/      Tabs seeded into the library: original demos + the generated songbook
+songbook/  The songbook as data (note names + chord symbols); npm run build-songbook writes demo/*.atex
+appstore/  Mac App Store listing, privacy policy, screenshots and submission guide
 tests/     vitest suites
 e2e/       Playwright smoke test (replaces YouTube with a fake player so it runs offline)
 scripts/   CLI helpers (add-song, validate-tab)

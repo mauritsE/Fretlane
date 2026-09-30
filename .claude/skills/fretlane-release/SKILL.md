@@ -43,3 +43,10 @@ Publishing makes a public release, so only do it when the user asks.
 1. Bump `version` in package.json through a normal PR, and merge it.
 2. Run **Release** on `main` with `publish: true`, or push a `vX.Y.Z` tag.
 3. Confirm the run is green and that the release has 4 assets: mac-arm64.zip, mac-x64.zip, windows-setup.exe and linux AppImage (`list_releases`, or `https://api.github.com/repos/<repo>/releases`).
+
+## Mac App Store
+- Config: `build.mas` in package.json (inherits `build.mac`, so `identity: "-"` must be overridden: CI passes `-c.mas.identity=null` for the unsigned sandbox check and `-c.mas.identity="$MAS_SIGNING_NAME"` for the store build). Entitlements: `build/entitlements.mas.plist` (sandbox, network server for the 127.0.0.1 library server, network client, user-selected files read-only) and `.inherit.plist`.
+- In the sandbox `app.getPath('home')` is the container, so the library lands in `~/Library/Containers/app.fretlane/Data/Fretlane`; `process.mas` skips the legacy ~/Songstarr migration.
+- `release/smoke.mjs --sandboxed` must not set FRETLANE_LIBRARY/USER_DATA (the sandbox blocks /tmp paths) and checks the library path is inside Containers.
+- `release/mas-adhoc-sign.sh` ad-hoc signs the unsigned MAS app with the entitlements so CI can launch it without Apple certificates.
+- The Apple side (developer account, certificates, profile, API key, secrets) is the user's job; `appstore/SUBMITTING.md` is the checklist. Never claim the app is "on the App Store" before the user confirms review passed.
