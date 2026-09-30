@@ -12,8 +12,11 @@ bundle=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/I
 inherit=build/entitlements.mas.inherit.plist
 ent=$(mktemp -t fretlane-ent).plist
 cp build/entitlements.mas.plist "$ent"
+# Chromium names the service "<bundle id>.MachPortRendezvousServer.<pid>", so the bare bundle id
+# is declared as a group too (ad-hoc signatures carry no team ID to prefix it with).
 /usr/libexec/PlistBuddy -c 'Add :com.apple.security.application-groups array' \
-  -c "Add :com.apple.security.application-groups:0 string $team.$bundle" "$ent"
+  -c "Add :com.apple.security.application-groups:0 string $team.$bundle" \
+  -c "Add :com.apple.security.application-groups:1 string $bundle" "$ent"
 # Inside out: frameworks and helper apps inherit the sandbox, then the app itself gets it.
 for item in "$app"/Contents/Frameworks/*; do
   codesign --force --deep --sign - --entitlements "$inherit" "$item"
@@ -25,4 +28,6 @@ done
 codesign --force --sign - --entitlements "$ent" "$app"
 codesign --verify --deep --strict --verbose=2 "$app"
 codesign -d --entitlements - "$app" 2>/dev/null | grep -q 'com.apple.security.app-sandbox' || { echo 'app-sandbox entitlement missing'; exit 1; }
+echo "ElectronTeamID: $(/usr/libexec/PlistBuddy -c 'Print :ElectronTeamID' "$app/Contents/Info.plist" 2>&1)"
+codesign -d --entitlements - "$app" 2>/dev/null | sed -n '1,40p'
 echo "Signed $app (ad-hoc, sandboxed)"
