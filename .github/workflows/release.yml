@@ -86,11 +86,19 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run dist:desktop -- --win
+      - name: Launch the unpacked app (tells app problems apart from installer problems)
+        shell: pwsh
+        run: |
+          node release/smoke.mjs release/out/win-unpacked/Fretlane.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Install silently and launch the installed app
         shell: pwsh
         run: |
           $setup = Get-ChildItem release/out -Filter 'Fretlane-*-windows-setup.exe' | Select-Object -First 1
           Start-Process -FilePath $setup.FullName -ArgumentList '/S' -Wait
+          # A one-click installer may start the app when it finishes; stop it so the test launches a fresh copy.
+          Start-Sleep -Seconds 3
+          Get-Process Fretlane -ErrorAction SilentlyContinue | Stop-Process -Force
           $exe = Get-ChildItem "$env:LOCALAPPDATA\Programs" -Recurse -Filter 'Fretlane.exe' | Select-Object -First 1
           if (-not $exe) { throw 'Fretlane.exe was not installed' }
           Write-Host "Installed to $($exe.FullName)"

@@ -18,6 +18,10 @@ const REPO_URL = 'https://github.com/mauritsE/Songstarr';
 const SMOKE = !!envVar('SMOKE');
 
 app.setName(APP_NAME);
+// Tests run each launch with its own profile folder (single-instance lock, caches). On macOS and
+// Windows the default profile folder ignores $HOME, so this is the only way to isolate runs.
+const userDataOverride = envVar('USER_DATA');
+if (userDataOverride) app.setPath('userData', path.resolve(userDataOverride));
 // Let the Play button start YouTube playback without an extra click inside the video.
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
