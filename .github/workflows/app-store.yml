@@ -37,9 +37,10 @@ jobs:
       - run: npm ci
       - run: npm run build && npm run build:desktop && node scripts/collect-licenses.mjs
       - name: Build the App Store flavour, unsigned
-        run: npx electron-builder --mac mas --arm64 --publish never -c.mas.identity=null -c.mas.provisioningProfile=null
+        # A placeholder team ID: sandboxed Chromium names its Mach services after ElectronTeamID.
+        run: npx electron-builder --mac mas --arm64 --publish never -c.mas.identity=null -c.mas.provisioningProfile=null -c.mas.extendInfo.ElectronTeamID=ADHOCTEAM1
       - name: Sign ad-hoc with the App Store entitlements
-        run: release/mas-adhoc-sign.sh release/out/mas-arm64/Fretlane.app
+        run: release/mas-adhoc-sign.sh release/out/mas-arm64/Fretlane.app ADHOCTEAM1
       - name: Launch it inside the App Sandbox
         run: node release/smoke.mjs release/out/mas-arm64/Fretlane.app/Contents/MacOS/Fretlane --sandboxed --timeout 120
       - name: Show the sandbox container
@@ -78,11 +79,16 @@ jobs:
           # One .p12 holding both the "Apple Distribution" and "Mac Installer Distribution" certificates.
           CSC_LINK: ${{ secrets.MAS_CERTIFICATES_P12 }}
           CSC_KEY_PASSWORD: ${{ secrets.MAS_CERTIFICATES_PASSWORD }}
+          SIGNING_NAME: ${{ secrets.MAS_SIGNING_NAME }}
+        # ElectronTeamID (the team ID from "Name (TEAMID)") lets the sandboxed app register its Mach
+        # services under its application group; @electron/osx-sign adds the matching entitlement.
         # Every upload needs a higher build number than the last one; the run number always grows.
-        run: >
-          npx electron-builder --mac mas --universal --publish never
-          -c.mas.identity="${{ secrets.MAS_SIGNING_NAME }}"
-          -c.buildVersion=${{ github.run_number }}
+        run: |
+          team=$(sed -E 's/.*\(([A-Z0-9]{10})\).*/\1/' <<<"$SIGNING_NAME")
+          npx electron-builder --mac mas --universal --publish never \
+            -c.mas.identity="$SIGNING_NAME" \
+            -c.mas.extendInfo.ElectronTeamID="$team" \
+            -c.buildVersion=${{ github.run_number }}
       - name: Verify the installer signature
         if: env.HAS_SECRETS == 'true'
         run: |

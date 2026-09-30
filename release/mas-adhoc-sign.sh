@@ -2,11 +2,18 @@
 # Ad-hoc signs an unsigned Mac App Store build with the App Store entitlements, so CI can launch it
 # inside the App Sandbox without Apple certificates. The real store build is signed by
 # electron-builder with the Apple Distribution certificate instead (see .github/workflows/app-store.yml).
-#   release/mas-adhoc-sign.sh release/out/mas-arm64/Fretlane.app
+#   release/mas-adhoc-sign.sh release/out/mas-arm64/Fretlane.app [TEAMID]
+# The team ID must match ElectronTeamID in the app's Info.plist: sandboxed Chromium may only
+# register Mach services under an application group, "<TEAMID>.<bundle id>".
 set -euo pipefail
 app="$1"
-ent=build/entitlements.mas.plist
+team="${2:-ADHOCTEAM1}"
+bundle=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")
 inherit=build/entitlements.mas.inherit.plist
+ent=$(mktemp -t fretlane-ent).plist
+cp build/entitlements.mas.plist "$ent"
+/usr/libexec/PlistBuddy -c 'Add :com.apple.security.application-groups array' \
+  -c "Add :com.apple.security.application-groups:0 string $team.$bundle" "$ent"
 # Inside out: frameworks and helper apps inherit the sandbox, then the app itself gets it.
 for item in "$app"/Contents/Frameworks/*; do
   codesign --force --deep --sign - --entitlements "$inherit" "$item"
