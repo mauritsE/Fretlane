@@ -1,41 +1,41 @@
 ---
 name: fretlane-release
-description: Build, verify and publish Fretlane's double-click release packages (standalone executables for Windows, macOS and Linux, made with bun build --compile) for non-technical users. Use when the user asks for a release, a new version, a download for someone else, or changes anything in release/ or server/app.ts.
+description: Build, verify and publish Fretlane's desktop app (Electron + electron-builder) for Windows, macOS and Linux, aimed at non-technical users. Use when the user asks for a release, a new version, a download for someone else, an installer or app bundle, a rename of the app, or changes anything in desktop/, release/, build/ or server/app.ts.
 ---
 
 # Releasing Fretlane
 
-## How the package works
-- `release/build.ts` runs `npm run build`, then generates `release/generated/entry.ts` (gitignored), which embeds `dist/` (minus unused font formats and licence texts) and `demo/` as base64 and calls `runLauncher()` from `release/launcher.ts`.
-- `bun build --compile --target=bun-<os>-<arch>` cross-compiles every target from Linux. Targets: windows-x64, macos-arm64, macos-x64, linux-x64, linux-arm64.
-- Each zip contains the executable, `START HERE.txt` (from `release/startHere.ts`, CRLF line endings on Windows) and `licenses/`: MIT, alphaTab MPL-2.0, Bravura OFL, Sonivox.
-- The zip is made with Info-ZIP `zip -qry`, which keeps the executable bit, so Mac and Linux users can double-click right after unzipping.
+## How the app is put together
+- `desktop/main.ts` is the Electron main process. It runs `startServer()` from `server/app.ts` in-process, serves `dist/` and seeds `demo/` from inside `app.asar`, and opens a `BrowserWindow` on `http://localhost:<port>`. It holds a single-instance lock, sets up a menu with Quit / Show Songs Folder / Help, sends external links to the browser, and quits when the window closes. esbuild bundles it into `desktop-dist/main.cjs` (`npm run build:desktop`).
+- Library: `~/Fretlane`. An existing `~/Songstarr/songs.json` (the app's old name) is renamed to that folder on first launch. Env: `FRETLANE_LIBRARY`, `FRETLANE_PORT`, `FRETLANE_SMOKE` (prints `FRETLANE_READY <url>` once the window has loaded). `SONGSTARR_*` variables are still honoured through `envVar()` in `shared/brand.ts`.
+- The name lives only in `shared/brand.ts` plus `productName` / `appId` in package.json's `build` section.
+- Icon: `build/icon.svg` → `npm run render-icon` → `build/icon.png` (1024², used for every platform). `public/icon.svg` serves as the favicon and in-app logo.
+- Packaging is electron-builder, configured in package.json `build`:
+  - mac: `zip` target for arm64 + x64, with `identity: "-"` so the app is ad-hoc signed.
+  - win: `nsis`, one-click, per-user install, desktop and Start menu shortcuts.
+  - linux: `AppImage`.
+  - `scripts/collect-licenses.mjs` puts MIT, alphaTab MPL-2.0, Bravura OFL and Sonivox licences into `resources/licenses`.
 
-## Build + verify (do all of it before calling a release done)
+## Build + verify (all of it, before calling a release done)
 1. `npm run typecheck && npm test`
-2. `npm run release`, or `-- --targets linux-x64` for a quick loop.
-3. Check the file headers: ELF `7f 45 4c 46`, Mach-O `cf fa ed fe`, PE `4d 5a`.
-4. Behave like a user. Unzip into the scratchpad, then run `HOME=<tmp>/home FRETLANE_NO_BROWSER=1 nohup ./Fretlane &`. Check the friendly output and that `~/Fretlane` got seeded.
-5. `npm run e2e -- http://localhost:5173` against the running binary.
-6. Launch it a second time: it must print "already running" and exit 0. Put a different program on the port (`python3 -m http.server <port>`): it must move to port+1.
-7. Stop processes with `pkill -x Fretlane`. A `pkill -f <pattern>` whose pattern appears in your own command line kills your own shell (exit 144). Use `pkill -f "http.server 519[0]"`-style patterns.
+2. Linux locally: `npm run dist:desktop -- --linux AppImage`.
+3. `xvfb-run -a npx tsx e2e/desktop.ts` drives the real window with Playwright. It covers the app name and title, library migration, render and playback, external links staying out of the window, the Quit menu, and quit-on-close.
+4. `APPIMAGE_EXTRACT_AND_RUN=1 xvfb-run -a node release/smoke.mjs release/out/Fretlane-*.AppImage -- --no-sandbox` launches the built package.
+5. macOS and Windows can only be verified in CI. Run the Release workflow on the branch with `publish: false` (`actions_run_trigger` → `run_workflow`, `release.yml`, ref = the branch) and wait until every job is green:
+   - `macos`: `codesign --verify --deep --strict`, then launches the arm64 app natively and the x64 app via Rosetta.
+   - `windows`: silent NSIS install (`/S`), then launches the installed `Fretlane.exe`.
+6. Look at `e2e/screenshots/1*-desktop-*.png`.
 
-Only the Linux binary can actually run in the sandbox. Windows and macOS runs cannot be verified here, so say so and ask the user to try them.
-
-## Gotchas
-- **Bun's cross-compiled macOS binaries have an INVALID ad-hoc signature.** Checking that `LC_CODE_SIGNATURE` exists is not enough. v0.1.0 shipped like that and would not run on Macs: the arm64 build had 1 page whose hash mismatched, and the x64 build's codeLimit stopped short of the embedded payload. Recompute the CodeDirectory page hashes to check this on Linux. The fix is `codesign --remove-signature` followed by `codesign --force --sign -` on a Mac: the Release workflow's `macos` job does this, and so does `build.ts` when it runs on macOS.
-- x64 targets use Bun's `*-baseline` runtimes, which don't need AVX2, so they work on older CPUs. Under Rosetta, even the baseline runtime prints "warn: CPU lacks AVX support". The check is simply built into both runtimes, and it is harmless for baseline, so ignore it. Real Intel Macs have AVX.
-- The Release workflow launches every package on its own OS before publishing: `node release/smoke.mjs <exe>` for Linux, macOS arm64, macOS x64 (via Rosetta) and Windows. A package that has never actually started on its target OS must not be published.
-- `--windows-title` and other Windows metadata flags only work when compiling on Windows. `build.ts` skips them elsewhere.
-- Bun's `.exe` gets flagged by SmartScreen, and Mac builds hit Gatekeeper ("developer cannot be verified"), because they are unsigned. START HERE explains the one-time bypass in plain words. Real code signing would need paid Apple and Microsoft certificates.
-- Keep all user-facing text jargon-free: no "terminal", "port" or "server" in START HERE, except the localhost URL as a fallback.
+## Gotchas (learned the hard way)
+- **Never ship a package that hasn't been launched on its own OS.** v0.1.0's Mac builds (Bun cross-compiled) had an invalid ad-hoc signature and would not start. A signature being *present* proves nothing: verify it with `codesign --verify --strict` on a Mac, or recompute the CodeDirectory page hashes.
+- Running as root, as in this sandbox, needs `--no-sandbox` for Electron. CI Linux needs `xvfb-run`, and AppImages need `APPIMAGE_EXTRACT_AND_RUN=1` because there is no FUSE.
+- The Electron binary download can be cut off by the sandbox proxy ("assert(!this.paused)" from undici). Re-run `node node_modules/electron/install.js` until `node_modules/electron/path.txt` exists.
+- Inside Playwright `electronApp.evaluate()`, don't define named helper functions: tsx injects `__name()`, which doesn't exist there.
+- Unsigned apps show Gatekeeper ("can't verify") and SmartScreen warnings. `release/RELEASE_NOTES.md` explains the one-time bypass in plain words, so keep that text jargon-free. Removing the warnings needs a paid Apple Developer ID (plus notarisation) and a Windows signing certificate.
+- Cloud sessions can't push tags (the push fails with "remote end hung up"). Publish through workflow_dispatch instead.
 
 ## Publishing
 Publishing makes a public release, so only do it when the user asks.
 1. Bump `version` in package.json through a normal PR, and merge it.
-2. Publish, either way:
-   - Tag push: `git tag vX.Y.Z && git push origin vX.Y.Z`.
-   - Actions: run the **Release** workflow on `main` with `publish: true`. With the GitHub MCP tools, that is `actions_run_trigger` (`run_workflow`, `release.yml`, ref `main`, inputs `{publish: true}`). The workflow creates tag `v<version>` on that commit plus the Release, with `release/RELEASE_NOTES.md` as the text.
-3. Watch the run (`actions_list list_workflow_runs`), then confirm with `list_releases` that the release exists and has 5 zip assets.
-
-**Learned:** cloud sessions can often only push their own working branch. `git push origin <tag>` fails with "remote end hung up / unexpected disconnect" while the proxy status shows no relay failure. Don't retry or route around it. Use the workflow_dispatch route instead, since it is the project's normal release mechanism.
+2. Run **Release** on `main` with `publish: true`, or push a `vX.Y.Z` tag.
+3. Confirm the run is green and that the release has 4 assets: mac-arm64.zip, mac-x64.zip, windows-setup.exe and linux AppImage (`list_releases`, or `https://api.github.com/repos/<repo>/releases`).

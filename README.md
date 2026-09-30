@@ -12,9 +12,15 @@ Everything runs on your machine. Nothing is uploaded anywhere.
 
 ## Download (no programming needed)
 
-Go to the [Releases page](https://github.com/mauritsE/Songstarr/releases), download the zip for your computer (Windows, Mac or Linux), unzip it, and double-click **Fretlane**. Your browser opens the app. The included **START HERE.txt** explains everything in plain language, including the one-time "unidentified developer" warning from Windows or macOS.
+Go to the [Releases page](https://github.com/mauritsE/Songstarr/releases) and download Fretlane for your computer:
 
-You don't need to install Node.js or anything else. Your songs are saved in a `Fretlane` folder in your home folder.
+- **Windows:** `Fretlane-…-windows-setup.exe`. Double-click it and it installs and opens, with Start menu and desktop shortcuts.
+- **Mac:** `Fretlane-…-mac-arm64.zip` (Apple chip) or `…-mac-x64.zip` (Intel). Unzip it and drag **Fretlane** to Applications.
+- **Linux:** `Fretlane-…-linux-x86_64.AppImage`. Make it executable and double-click it.
+
+Fretlane is a normal desktop app, with its own window, icon and Quit menu. You don't need Node.js or anything else. The first time you open it, macOS or Windows asks whether you trust the app, because it isn't registered with Apple or Microsoft. The release page explains the one-time "Open Anyway" / "Run anyway" step.
+
+Your songs are saved in a `Fretlane` folder in your home folder (**File → Show Songs Folder**). An existing `Songstarr` library (the app's old name) is moved over automatically.
 
 ## Quick start (from source)
 
@@ -83,24 +89,23 @@ npm run e2e              # browser smoke test against a running dev server (Play
 npm run validate-tab -- demo/*.atex some.gp5   # parse tabs with alphaTab in Node and print a summary
 ```
 
-### Making a release
+### Desktop app and releases
 
-The release packages are standalone executables made with `bun build --compile`. Each one bundles the server, the built UI and the demo songs. Bun cross-compiles every platform from one machine.
+The desktop app is [Electron](https://www.electronjs.org/). `desktop/main.ts` runs the same library server in-process and shows the UI in a native window. It keeps a single running instance, puts the library in `~/Fretlane`, uses port 5173 or the next free one, and opens external links in the browser.
 
 ```bash
-npm run release                                   # needs Bun: https://bun.sh
-npm run release -- --targets windows-x64,macos-arm64
+npm run desktop                           # build and run the desktop app locally
+npm run dist:desktop -- --linux AppImage  # package for the current OS (--mac / --win on those systems)
 ```
 
-This writes `release/out/Fretlane-<version>-<platform>.zip` for windows-x64, macos-arm64, macos-x64, linux-x64 and linux-arm64.
+Packages land in `release/out/`:
+- a macOS zip holding an ad-hoc signed `Fretlane.app` (Apple chip and Intel)
+- a Windows one-click installer
+- a Linux AppImage
 
-To publish, bump `version` in `package.json`, then either push a tag (`git tag v0.2.0 && git push origin v0.2.0`), or open **Actions → Release → Run workflow** on `main` with **publish** ticked. The workflow tests the code, builds all zips and publishes them as a GitHub Release, using `release/RELEASE_NOTES.md` as the description.
+To publish, bump `version` in `package.json`. Then either push a tag (`git tag v0.2.0 && git push origin v0.2.0`), or open **Actions → Release → Run workflow** on `main` with **publish** ticked. The workflow builds on real Linux, macOS and Windows machines and launches every build (on Windows, through a silent install). It publishes the GitHub Release only if they all start, using `release/RELEASE_NOTES.md` as the text.
 
-The executable (`release/launcher.ts`):
-- stores the library in `~/Fretlane`
-- uses port 5173, or the next free one if that's taken
-- opens the browser, or reuses a copy that's already running
-- honours the `FRETLANE_LIBRARY`, `FRETLANE_PORT` and `FRETLANE_NO_BROWSER` environment variables
+To rename the app, change `shared/brand.ts` and `productName` / `appId` in `package.json`.
 
 Project layout:
 
@@ -112,7 +117,9 @@ demo/      Original demo tabs seeded into a fresh library
 tests/     vitest suites
 e2e/       Playwright smoke test (replaces YouTube with a fake player so it runs offline)
 scripts/   CLI helpers (add-song, validate-tab)
-release/   Standalone executable launcher, package builder, START HERE text, release notes
+desktop/   Electron main process (the desktop app)
+build/     App icon (icon.svg → icon.png via npm run render-icon)
+release/   Release notes and the launch smoke test used in CI
 .claude/   Claude Code skills learned while building this (see below)
 ```
 
