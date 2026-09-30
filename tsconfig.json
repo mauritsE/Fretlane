@@ -30,6 +30,7 @@
     "release",
     "scripts",
     "songbook",
+    "marketing",
     "e2e"
   ],
   "exclude": [

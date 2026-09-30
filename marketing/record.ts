@@ -55,6 +55,7 @@ const mark = (name: string) => {
 let mouse = { x: 960, y: 540 };
 /** Glides the pointer to an element and clicks it, like a person would. */
 async function click(p: Page, selector: string, opts: { pause?: number } = {}): Promise<void> {
+  await p.locator(selector).first().scrollIntoViewIfNeeded();
   const box = await p.locator(selector).first().boundingBox();
   if (!box) throw new Error(`not visible: ${selector}`);
   const to = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
@@ -94,7 +95,10 @@ await click(page, '.song-card[data-title="In the Hall of the Mountain King"] .ca
 await rendered(page);
 await page.waitForTimeout(600);
 mark('play');
-await click(page, 'button.play', { pause: 5200 });
+await click(page, 'button.play', { pause: 0 });
+await page.waitForFunction(() => (window as any).fretlane.at.playerState === 1, undefined, { polling: 'raf' });
+mark('playing'); // the soundtrack (marketing/export-audio.ts) is aligned to this moment
+await page.waitForTimeout(5000);
 mark('tracks');
 await click(page, '.track-list li:nth-child(4)', { pause: 200 });
 await rendered(page);
@@ -131,7 +135,7 @@ await click(page, '.view-bar [data-view="all"]', { pause: 600 });
 
 // 5. Finished learning a song? Archive it.
 mark('archive');
-await click(page, '.song-card[data-title="Twinkle Twinkle Little Star"] button.done', { pause: 1200 });
+await click(page, '.song-card[data-title="Jingle Bells"] button.done', { pause: 1200 });
 await click(page, '.view-bar [data-view="archive"]', { pause: 2400 });
 await click(page, '.view-bar [data-view="all"]', { pause: 600 });
 
