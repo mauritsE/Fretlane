@@ -15,7 +15,8 @@
     "test": "vitest run",
     "add-song": "tsx scripts/add-song.ts",
     "validate-tab": "tsx scripts/validate-tab.ts",
-    "e2e": "tsx e2e/smoke.ts"
+    "e2e": "tsx e2e/smoke.ts",
+    "release": "tsx release/build.ts"
   },
   "engines": {
     "node": ">=20"

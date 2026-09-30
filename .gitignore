@@ -8,3 +8,5 @@ test-results/
 public/font/
 public/soundfont/
 e2e/screenshots/
+release/out/
+release/generated/

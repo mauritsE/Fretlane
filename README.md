@@ -10,7 +10,13 @@ An open-source, local-first tab player in the spirit of Songsterr. Load a tab fr
 
 Everything runs on your machine. Nothing is uploaded anywhere.
 
-## Quick start
+## Download (no programming needed)
+
+Go to the [Releases page](https://github.com/mauritsE/Songstarr/releases), download the zip for your computer (Windows, Mac or Linux), unzip it, and double-click **Songstarr**. Your browser opens the app. The included **START HERE.txt** explains everything in plain language, including the one-time "unidentified developer" warning from Windows or macOS.
+
+You don't need to install Node.js or anything else. Your songs are saved in a `Songstarr` folder in your home folder.
+
+## Quick start (from source)
 
 Requires Node.js 20+.
 
@@ -77,6 +83,25 @@ npm run e2e              # browser smoke test against a running dev server (Play
 npm run validate-tab -- demo/*.atex some.gp5   # parse tabs with alphaTab in Node and print a summary
 ```
 
+### Making a release
+
+The release packages are standalone executables made with `bun build --compile`. Each one bundles the server, the built UI and the demo songs. Bun cross-compiles every platform from one machine.
+
+```bash
+npm run release                                   # needs Bun: https://bun.sh
+npm run release -- --targets windows-x64,macos-arm64
+```
+
+This writes `release/out/Songstarr-<version>-<platform>.zip` for windows-x64, macos-arm64, macos-x64, linux-x64 and linux-arm64.
+
+To publish, bump `version` in `package.json` and push a tag (`git tag v0.2.0 && git push origin v0.2.0`). The **Release** GitHub Action tests, builds and attaches all zips to a GitHub Release, using `release/RELEASE_NOTES.md` as the description.
+
+The executable (`release/launcher.ts`):
+- stores the library in `~/Songstarr`
+- uses port 5173, or the next free one if that's taken
+- opens the browser, or reuses a copy that's already running
+- honours the `SONGSTARR_LIBRARY`, `SONGSTARR_PORT` and `SONGSTARR_NO_BROWSER` environment variables
+
 Project layout:
 
 ```
@@ -87,6 +112,7 @@ demo/      Original demo tabs seeded into a fresh library
 tests/     vitest suites
 e2e/       Playwright smoke test (replaces YouTube with a fake player so it runs offline)
 scripts/   CLI helpers (add-song, validate-tab)
+release/   Standalone executable launcher, package builder, START HERE text, release notes
 .claude/   Claude Code skills learned while building this (see below)
 ```
 
