@@ -24,6 +24,7 @@ Only the Linux binary can actually run in the sandbox. Windows and macOS runs ca
 
 ## Gotchas
 - **Bun's cross-compiled macOS binaries have an INVALID ad-hoc signature.** Checking that `LC_CODE_SIGNATURE` exists is not enough. v0.1.0 shipped like that and would not run on Macs: the arm64 build had 1 page whose hash mismatched, and the x64 build's codeLimit stopped short of the embedded payload. Recompute the CodeDirectory page hashes to check this on Linux. The fix is `codesign --remove-signature` followed by `codesign --force --sign -` on a Mac: the Release workflow's `macos` job does this, and so does `build.ts` when it runs on macOS.
+- x64 targets use Bun's `*-baseline` runtimes, which don't need AVX2, so they work on older CPUs. Under Rosetta, even the baseline runtime prints "warn: CPU lacks AVX support". The check is simply built into both runtimes, and it is harmless for baseline, so ignore it. Real Intel Macs have AVX.
 - The Release workflow launches every package on its own OS before publishing: `node release/smoke.mjs <exe>` for Linux, macOS arm64, macOS x64 (via Rosetta) and Windows. A package that has never actually started on its target OS must not be published.
 - `--windows-title` and other Windows metadata flags only work when compiling on Windows. `build.ts` skips them elsewhere.
 - Bun's `.exe` gets flagged by SmartScreen, and Mac builds hit Gatekeeper ("developer cannot be verified"), because they are unsigned. START HERE explains the one-time bypass in plain words. Real code signing would need paid Apple and Microsoft certificates.
