@@ -1,11 +1,12 @@
 # Shows a "Sponsor" button at the top of the GitHub repo page.
 # Docs: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/displaying-a-sponsor-button-in-your-repository
 
-# GitHub Sponsors: only works after you join at https://github.com/sponsors
-github: mauritsE
+ko_fi: mauritselzinga
+
+# GitHub Sponsors: uncomment after you join at https://github.com/sponsors
+# github: mauritsE
 
 # Uncomment and fill in any of these once you have an account there:
-# ko_fi: your-ko-fi-name
 # buy_me_a_coffee: your-bmc-name
 # liberapay: your-liberapay-name
 # custom: ["https://paypal.me/your-name"]

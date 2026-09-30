@@ -124,7 +124,7 @@ Rendering and playback are done by [alphaTab](https://alphatab.net) (MPL-2.0). M
 
 ## Support Songstarr
 
-Songstarr is free and open source. If it helps you learn songs and you'd like to say thanks, use the **Sponsor** button at the top of the [GitHub page](https://github.com/mauritsE/Songstarr). Bug reports and ideas are just as welcome.
+Songstarr is free and open source. If it helps you learn songs and you'd like to say thanks, you can [buy me a coffee on Ko-fi](https://ko-fi.com/mauritselzinga). Bug reports and ideas are just as welcome.
 
 ## License
 
