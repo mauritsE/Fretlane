@@ -204,6 +204,7 @@ export async function renderPlayer(root: HTMLElement, songId: string): Promise<C
   at.renderFinished.on(() => overlay.classList.add('hidden'));
 
   at.scoreLoaded.on((score) => {
+    useProfileFor(tracksToShow.map((i) => score.tracks[i]).filter(Boolean));
     applySyncPoints(score);
     drawTracks();
     updateMetronomeContext();
@@ -291,6 +292,20 @@ export async function renderPlayer(root: HTMLElement, songId: string): Promise<C
   else at.load(tab, tracksToShow);
 
   // ---------- helpers ----------
+  /**
+   * Drums have no tab staff, so rendering only a drum track in the "Tab" view leaves alphaTab
+   * nothing to lay out (it throws in StaffSystem.addBars). Show drums as notation instead.
+   */
+  function useProfileFor(tracks: alphaTab.model.Track[]): void {
+    const chosen = Number(staveSel.value) as alphaTab.StaveProfile;
+    const drumsOnly = tracks.length > 0 && tracks.every((t) => t.staves.every((st) => st.isPercussion));
+    const profile = drumsOnly && chosen === alphaTab.StaveProfile.Tab ? alphaTab.StaveProfile.Score : chosen;
+    if (at.settings.display.staveProfile !== profile) {
+      at.settings.display.staveProfile = profile;
+      at.updateSettings();
+    }
+  }
+
   /** Offer the song's tempo (at the current practice speed) to the metronome panel. */
   function updateMetronomeContext(): void {
     const score = at.score;
@@ -374,6 +389,7 @@ export async function renderPlayer(root: HTMLElement, songId: string): Promise<C
           {
             class: rendered.has(track.index) ? 'active' : '',
             onclick: () => {
+              useProfileFor([track]);
               at.renderTracks([track]);
               trackList.querySelectorAll('li').forEach((li) => li.classList.remove('active'));
               trackList.children[track.index]?.classList.add('active');
@@ -527,8 +543,7 @@ export async function renderPlayer(root: HTMLElement, songId: string): Promise<C
     at.render();
   };
   staveSel.onchange = () => {
-    at.settings.display.staveProfile = Number(staveSel.value) as alphaTab.StaveProfile;
-    at.updateSettings();
+    useProfileFor(at.tracks);
     at.render();
   };
   syncBtn.onclick = () => toggleSync();

@@ -149,7 +149,14 @@ for (const s of all.filter((x) => x.tags.includes('songbook') || x.tags.includes
   await waitRendered(page);
   const info = await page.evaluate(() => ({ bars: (window as any).fretlane.at.score?.masterBars.length ?? 0, tracks: document.querySelectorAll('.track-list li').length }));
   check(info.bars > 0 && info.tracks > 0, `"${s.title}" renders (${info.bars} bars, ${info.tracks} tracks)`);
+  // Every track must render on its own too (drum tracks once crashed alphaTab in the Tab view).
+  for (let i = 1; i < info.tracks; i++) {
+    await page.locator('.track-list li').nth(i).click();
+    await waitRendered(page);
+  }
 }
+const workerErrors = errors.filter((e) => /unexpected error/.test(e));
+check(workerErrors.length === 0, `every track of every song renders${workerErrors.length ? `: ${workerErrors[0].slice(0, 120)}` : ''}`);
 const king = all.find((x) => x.title === 'In the Hall of the Mountain King')!;
 await page.goto(`${BASE}/#/song/${king.id}`);
 await waitRendered(page);
