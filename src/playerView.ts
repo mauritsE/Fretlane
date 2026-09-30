@@ -1,6 +1,7 @@
 import * as alphaTab from '@coderline/alphatab';
 import type { Song, SyncPoint } from '../shared/types.ts';
 import { normalizeSyncPoints, shiftSyncPoints, toFlatSyncPoints, upsertSyncPoint } from '../shared/sync.ts';
+import { APP_NAME } from '../shared/brand.ts';
 import { api } from './api.ts';
 import { formatTime, h, toast } from './dom.ts';
 import { openSongDialog } from './libraryView.ts';
@@ -93,7 +94,7 @@ export async function renderPlayer(root: HTMLElement, songId: string): Promise<C
       'header.topbar',
       {},
       h('a.back', { href: '#/', title: 'Library' }, '←'),
-      h('a.brand', { href: '#/' }, h('span.logo', {}, '♪')),
+      h('a.brand', { href: '#/' }, h('img.logo', { src: '/icon.svg', alt: APP_NAME })),
       titleEl,
       h('span.spacer'),
       h(
@@ -157,7 +158,7 @@ export async function renderPlayer(root: HTMLElement, songId: string): Promise<C
   const at = new alphaTab.AlphaTabApi(tabHost, settings);
   cleanups.push(() => at.destroy());
   // Handy for debugging from the devtools console.
-  (window as unknown as { songstarr: unknown }).songstarr = { at, get video() { return video; }, get song() { return song; } };
+  (window as unknown as { fretlane: unknown }).fretlane = { at, get video() { return video; }, get song() { return song; } };
 
   at.error.on((e) => {
     overlay.classList.add('hidden');

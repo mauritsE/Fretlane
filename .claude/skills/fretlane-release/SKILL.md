@@ -1,9 +1,9 @@
 ---
-name: songstarr-release
-description: Build, verify and publish Songstarr's double-click release packages (standalone executables for Windows, macOS and Linux, made with bun build --compile) for non-technical users. Use when the user asks for a release, a new version, a download for someone else, or changes anything in release/ or server/app.ts.
+name: fretlane-release
+description: Build, verify and publish Fretlane's double-click release packages (standalone executables for Windows, macOS and Linux, made with bun build --compile) for non-technical users. Use when the user asks for a release, a new version, a download for someone else, or changes anything in release/ or server/app.ts.
 ---
 
-# Releasing Songstarr
+# Releasing Fretlane
 
 ## How the package works
 - `release/build.ts` runs `npm run build`, then generates `release/generated/entry.ts` (gitignored), which embeds `dist/` (minus unused font formats and licence texts) and `demo/` as base64 and calls `runLauncher()` from `release/launcher.ts`.
@@ -15,10 +15,10 @@ description: Build, verify and publish Songstarr's double-click release packages
 1. `npm run typecheck && npm test`
 2. `npm run release`, or `-- --targets linux-x64` for a quick loop.
 3. Check the file headers: ELF `7f 45 4c 46`, Mach-O `cf fa ed fe`, PE `4d 5a`.
-4. Behave like a user. Unzip into the scratchpad, then run `HOME=<tmp>/home SONGSTARR_NO_BROWSER=1 nohup ./Songstarr &`. Check the friendly output and that `~/Songstarr` got seeded.
+4. Behave like a user. Unzip into the scratchpad, then run `HOME=<tmp>/home FRETLANE_NO_BROWSER=1 nohup ./Fretlane &`. Check the friendly output and that `~/Fretlane` got seeded.
 5. `npm run e2e -- http://localhost:5173` against the running binary.
 6. Launch it a second time: it must print "already running" and exit 0. Put a different program on the port (`python3 -m http.server <port>`): it must move to port+1.
-7. Stop processes with `pkill -x Songstarr`. A `pkill -f <pattern>` whose pattern appears in your own command line kills your own shell (exit 144). Use `pkill -f "http.server 519[0]"`-style patterns.
+7. Stop processes with `pkill -x Fretlane`. A `pkill -f <pattern>` whose pattern appears in your own command line kills your own shell (exit 144). Use `pkill -f "http.server 519[0]"`-style patterns.
 
 Only the Linux binary can actually run in the sandbox. Windows and macOS runs cannot be verified here, so say so and ask the user to try them.
 

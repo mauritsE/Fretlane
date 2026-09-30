@@ -84,14 +84,14 @@ const tracks = await page.locator('.track-list li').count();
 check(tracks === 3, `multi-track demo lists ${tracks} tracks`);
 await page.click('button.play');
 await page.waitForTimeout(2500);
-const synthPos = await page.evaluate(() => (window as any).songstarr.at.timePosition as number);
+const synthPos = await page.evaluate(() => (window as any).fretlane.at.timePosition as number);
 check(synthPos > 500, `synth playback advanced to ${Math.round(synthPos)}ms`);
 await page.screenshot({ path: `${SHOTS}02-player-synth.png` });
 await page.click('button.play');
 // switch track
 await page.locator('.track-list li').nth(1).click();
 await waitRendered(page);
-const rendered = await page.evaluate(() => (window as any).songstarr.at.tracks.map((t: any) => t.name));
+const rendered = await page.evaluate(() => (window as any).fretlane.at.tracks.map((t: any) => t.name));
 check(rendered.join() === 'Bass', `switching tracks renders ${rendered}`);
 
 // ---------- add a song with a (fake) YouTube video + pasted ASCII tab ----------
@@ -115,14 +115,14 @@ check(await page.locator('#fake-yt').isVisible(), 'video panel shows the (fake) 
 // Playing from alphaTab must drive the video, and the video clock must drive the cursor.
 await page.click('button.play');
 await page.waitForTimeout(1500);
-const s1 = await page.evaluate(() => ({ yt: (window as any).__fakeYT.t, at: (window as any).songstarr.at.timePosition, st: (window as any).__fakeYT.state }));
+const s1 = await page.evaluate(() => ({ yt: (window as any).__fakeYT.t, at: (window as any).fretlane.at.timePosition, st: (window as any).__fakeYT.state }));
 check(s1.st === 1, 'alphaTab play() started the video');
 check(Math.abs(s1.at - s1.yt * 1000) < 200, `tab time follows video time (tab ${Math.round(s1.at)}ms vs video ${Math.round(s1.yt * 1000)}ms)`);
 
 // Pausing from the video side must pause alphaTab.
 await page.evaluate(() => (window as any).__fakeYT.pauseVideo());
 await page.waitForTimeout(200);
-const atState = await page.evaluate(() => (window as any).songstarr.at.playerState);
+const atState = await page.evaluate(() => (window as any).fretlane.at.playerState);
 check(atState === 0, 'pausing the video pauses the tab');
 
 // Sync: pin bar 1 to video time 2.0s -> tab time at video 2.0s must be ~0.
@@ -135,7 +135,7 @@ const pinned = await api<{ syncPoints: { bar: number; time: number }[] }>(`/api/
 check(pinned.syncPoints.length === 1 && Math.abs(pinned.syncPoints[0].time - 2) < 0.01, `sync pin saved (${JSON.stringify(pinned.syncPoints)})`);
 await page.evaluate(() => (window as any).__fakeYT.seekTo(3));
 await page.waitForTimeout(300);
-const afterPin = await page.evaluate(() => (window as any).songstarr.at.timePosition as number);
+const afterPin = await page.evaluate(() => (window as any).fretlane.at.timePosition as number);
 check(Math.abs(afterPin - 1000) < 150, `with bar 1 pinned at 2.0s, video 3.0s maps to tab ${Math.round(afterPin)}ms (expected ~1000)`);
 
 // Speed change propagates to the video.
@@ -147,7 +147,7 @@ check(rate === 0.5, `speed 50% is applied to the video (rate=${rate})`);
 // Clicking a beat in the tab seeks the video.
 await page.evaluate(() => (window as any).__fakeYT.seekTo(10));
 const beatBox = await page.evaluate(() => {
-  const at = (window as any).songstarr.at;
+  const at = (window as any).fretlane.at;
   const b = at.boundsLookup.staffSystems[0].bars[0].bars[0].beats[0].visualBounds;
   const r = at.container.element.getBoundingClientRect ? at.container.element.getBoundingClientRect() : document.querySelector('.at-host')!.getBoundingClientRect();
   return { x: r.left + b.x + b.w / 2, y: r.top + b.y + b.h / 2 };

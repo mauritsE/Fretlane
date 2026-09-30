@@ -1,4 +1,4 @@
-# Songstarr 🎸
+# Fretlane 🎸
 
 An open-source, local-first tab player in the spirit of Songsterr. Load a tab from anywhere, link a YouTube video, and play along. The tab cursor follows the recording.
 
@@ -12,9 +12,9 @@ Everything runs on your machine. Nothing is uploaded anywhere.
 
 ## Download (no programming needed)
 
-Go to the [Releases page](https://github.com/mauritsE/Songstarr/releases), download the zip for your computer (Windows, Mac or Linux), unzip it, and double-click **Songstarr**. Your browser opens the app. The included **START HERE.txt** explains everything in plain language, including the one-time "unidentified developer" warning from Windows or macOS.
+Go to the [Releases page](https://github.com/mauritsE/Songstarr/releases), download the zip for your computer (Windows, Mac or Linux), unzip it, and double-click **Fretlane**. Your browser opens the app. The included **START HERE.txt** explains everything in plain language, including the one-time "unidentified developer" warning from Windows or macOS.
 
-You don't need to install Node.js or anything else. Your songs are saved in a `Songstarr` folder in your home folder.
+You don't need to install Node.js or anything else. Your songs are saved in a `Fretlane` folder in your home folder.
 
 ## Quick start (from source)
 
@@ -22,7 +22,7 @@ Requires Node.js 20+.
 
 ```bash
 git clone https://github.com/mauritsE/Songstarr.git
-cd Songstarr
+cd Fretlane
 npm install
 npm run dev        # UI on http://localhost:5173 (API on :5174, proxied)
 ```
@@ -46,7 +46,7 @@ npm run add-song -- ~/Tabs/my-song.gp5 --youtube https://youtu.be/XXXXXXXXXXX --
 npm run add-song -- https://example.com/some-tab.gp --title "Song" --artist "Band"
 ```
 
-**Where tabs come from:** use tabs you wrote yourself (Guitar Pro, TuxGuitar and MuseScore can all export compatible files), tabs you bought, or tabs whose license allows it. Songstarr does not ship or scrape anyone's tabs.
+**Where tabs come from:** use tabs you wrote yourself (Guitar Pro, TuxGuitar and MuseScore can all export compatible files), tabs you bought, or tabs whose license allows it. Fretlane does not ship or scrape anyone's tabs.
 
 ## Syncing a tab to a video
 
@@ -59,7 +59,7 @@ Under the hood the pins become alphaTab *sync points*, and alphaTab stretches th
 
 ## Plain-text (ASCII) tabs
 
-Most tabs on the web are text like `e|---0---3---|`. Songstarr converts them to alphaTex on import: it detects string names and tuning, bars, chords, two-digit frets, hammer-ons/pull-offs, slides, bends, vibrato and dead notes.
+Most tabs on the web are text like `e|---0---3---|`. Fretlane converts them to alphaTex on import: it detects string names and tuning, bars, chords, two-digit frets, hammer-ons/pull-offs, slides, bends, vibrato and dead notes.
 
 **Limitation:** text tabs have no real rhythm, so every note column becomes an eighth note. The notes and bars are right, but the timing inside a bar is approximate. Pin every bar (tap-along works well for this) to keep the cursor on the right bar.
 
@@ -67,10 +67,10 @@ Most tabs on the web are text like `e|---0---3---|`. Songstarr converts them to 
 
 | Env var | Default | Purpose |
 | --- | --- | --- |
-| `SONGSTARR_LIBRARY` | `./library` | Where `songs.json` and tab files are stored |
-| `SONGSTARR_PORT` | `5174` (dev API) / `5173` (`npm start`) | Server port |
-| `SONGSTARR_HOST` | `127.0.0.1` | Bind address. The server is meant to be local only |
-| `SONGSTARR_URL` | `http://localhost:5173` | Used by `npm run add-song` |
+| `FRETLANE_LIBRARY` | `./library` | Where `songs.json` and tab files are stored |
+| `FRETLANE_PORT` | `5174` (dev API) / `5173` (`npm start`) | Server port |
+| `FRETLANE_HOST` | `127.0.0.1` | Bind address. The server is meant to be local only |
+| `FRETLANE_URL` | `http://localhost:5173` | Used by `npm run add-song` |
 
 Back up or sync your library by copying the `library/` folder.
 
@@ -92,15 +92,15 @@ npm run release                                   # needs Bun: https://bun.sh
 npm run release -- --targets windows-x64,macos-arm64
 ```
 
-This writes `release/out/Songstarr-<version>-<platform>.zip` for windows-x64, macos-arm64, macos-x64, linux-x64 and linux-arm64.
+This writes `release/out/Fretlane-<version>-<platform>.zip` for windows-x64, macos-arm64, macos-x64, linux-x64 and linux-arm64.
 
 To publish, bump `version` in `package.json`, then either push a tag (`git tag v0.2.0 && git push origin v0.2.0`), or open **Actions → Release → Run workflow** on `main` with **publish** ticked. The workflow tests the code, builds all zips and publishes them as a GitHub Release, using `release/RELEASE_NOTES.md` as the description.
 
 The executable (`release/launcher.ts`):
-- stores the library in `~/Songstarr`
+- stores the library in `~/Fretlane`
 - uses port 5173, or the next free one if that's taken
 - opens the browser, or reuses a copy that's already running
-- honours the `SONGSTARR_LIBRARY`, `SONGSTARR_PORT` and `SONGSTARR_NO_BROWSER` environment variables
+- honours the `FRETLANE_LIBRARY`, `FRETLANE_PORT` and `FRETLANE_NO_BROWSER` environment variables
 
 Project layout:
 

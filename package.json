@@ -1,8 +1,8 @@
 {
-  "name": "songstarr",
-  "version": "0.1.1",
+  "name": "fretlane",
+  "version": "0.2.0",
   "private": true,
-  "description": "Open-source, local-first tab player: play along with Guitar Pro / MusicXML / alphaTex tabs synced to YouTube videos.",
+  "description": "Open-source, local-first tab player: play along with Guitar Pro / MusicXML / alphaTex / plain-text tabs synced to YouTube videos.",
   "license": "MIT",
   "type": "module",
   "scripts": {
@@ -10,13 +10,16 @@
     "dev:server": "tsx watch server/index.ts",
     "dev:web": "vite",
     "build": "tsc --noEmit && vite build",
-    "start": "npm run build && tsx server/index.ts --serve-dist",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "add-song": "tsx scripts/add-song.ts",
     "validate-tab": "tsx scripts/validate-tab.ts",
     "e2e": "tsx e2e/smoke.ts",
-    "release": "tsx release/build.ts"
+    "build:desktop": "esbuild desktop/main.ts --bundle --platform=node --format=cjs --target=node22 --external:electron --outfile=desktop-dist/main.cjs",
+    "desktop": "npm run build && npm run build:desktop && electron .",
+    "dist:desktop": "npm run build && npm run build:desktop && node scripts/collect-licenses.mjs && electron-builder --publish never",
+    "render-icon": "tsx scripts/render-icon.ts",
+    "start": "npm run build && tsx server/index.ts --serve-dist"
   },
   "engines": {
     "node": ">=20"
@@ -28,11 +31,91 @@
     "@coderline/alphatab-vite": "^1.8.4",
     "@types/node": "^26.6.3",
     "concurrently": "^10.0.5",
+    "electron": "^44.5.1",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.2",
     "playwright": "^1.63.0",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "vite": "^8.3.1",
     "vitest": "^5.0.3"
   },
-  "repository": "github:mauritsE/Songstarr"
+  "repository": "github:mauritsE/Songstarr",
+  "productName": "Fretlane",
+  "main": "desktop-dist/main.cjs",
+  "author": "Maurits Elzinga",
+  "build": {
+    "appId": "app.fretlane",
+    "productName": "Fretlane",
+    "copyright": "Copyright © 2026 Maurits Elzinga and Fretlane contributors (MIT)",
+    "directories": {
+      "output": "release/out",
+      "buildResources": "build"
+    },
+    "files": [
+      "desktop-dist/**",
+      "dist/**",
+      "demo/**",
+      "build/icon.png",
+      "package.json",
+      "!node_modules/**"
+    ],
+    "extraResources": [
+      {
+        "from": "release/licenses",
+        "to": "licenses"
+      }
+    ],
+    "artifactName": "Fretlane-${version}-${os}-${arch}.${ext}",
+    "asar": true,
+    "mac": {
+      "target": [
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "category": "public.app-category.music",
+      "icon": "build/icon.png",
+      "identity": "-",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "runAfterFinish": true,
+      "shortcutName": "Fretlane",
+      "artifactName": "Fretlane-${version}-windows-setup.${ext}"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "category": "AudioVideo",
+      "icon": "build/icon.png",
+      "executableName": "fretlane"
+    }
+  }
 }

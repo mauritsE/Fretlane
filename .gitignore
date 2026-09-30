@@ -10,3 +10,5 @@ public/soundfont/
 e2e/screenshots/
 release/out/
 release/generated/
+desktop-dist/
+release/licenses/
