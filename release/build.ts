@@ -113,6 +113,17 @@ for (const t of targets) {
   if (t.platform === 'windows' && process.platform === 'win32') compileArgs.push('--windows-title=Songstarr');
   run(bun, compileArgs);
   if (t.platform !== 'windows') chmodSync(exePath, 0o755);
+  if (t.platform === 'macos') {
+    // Bun's cross-compiled macOS binaries carry an invalid ad-hoc signature (macOS says "damaged" or
+    // kills them on launch). On a Mac we can fix that here; elsewhere the Release workflow's macOS job does.
+    if (process.platform === 'darwin') {
+      run('codesign', ['--remove-signature', exePath]);
+      run('codesign', ['--force', '--sign', '-', '--identifier', 'app.songstarr', exePath]);
+      run('codesign', ['--verify', '--strict', exePath]);
+    } else {
+      console.warn(`! ${t.id}: must be re-signed on a Mac before it can run (the Release workflow does this).`);
+    }
+  }
 
   const text = startHereText(t.platform, version);
   // Windows Notepad versions before 2018 need CRLF line endings.
