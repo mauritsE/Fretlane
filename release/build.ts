@@ -26,11 +26,13 @@ interface Target {
   platform: Platform;
   exe: string;
 }
+// x64 targets use Bun's "baseline" builds: they don't need AVX2, so they run on older CPUs and under
+// Rosetta (the regular build warns "CPU lacks AVX support, strange crashes may occur" there).
 const TARGETS: Target[] = [
-  { id: 'windows-x64', bunTarget: 'bun-windows-x64', platform: 'windows', exe: 'Songstarr.exe' },
+  { id: 'windows-x64', bunTarget: 'bun-windows-x64-baseline', platform: 'windows', exe: 'Songstarr.exe' },
   { id: 'macos-arm64', bunTarget: 'bun-darwin-arm64', platform: 'macos', exe: 'Songstarr' },
-  { id: 'macos-x64', bunTarget: 'bun-darwin-x64', platform: 'macos', exe: 'Songstarr' },
-  { id: 'linux-x64', bunTarget: 'bun-linux-x64', platform: 'linux', exe: 'Songstarr' },
+  { id: 'macos-x64', bunTarget: 'bun-darwin-x64-baseline', platform: 'macos', exe: 'Songstarr' },
+  { id: 'linux-x64', bunTarget: 'bun-linux-x64-baseline', platform: 'linux', exe: 'Songstarr' },
   { id: 'linux-arm64', bunTarget: 'bun-linux-arm64', platform: 'linux', exe: 'Songstarr' },
 ];
 
@@ -113,6 +115,17 @@ for (const t of targets) {
   if (t.platform === 'windows' && process.platform === 'win32') compileArgs.push('--windows-title=Songstarr');
   run(bun, compileArgs);
   if (t.platform !== 'windows') chmodSync(exePath, 0o755);
+  if (t.platform === 'macos') {
+    // Bun's cross-compiled macOS binaries carry an invalid ad-hoc signature (macOS says "damaged" or
+    // kills them on launch). On a Mac we can fix that here; elsewhere the Release workflow's macOS job does.
+    if (process.platform === 'darwin') {
+      run('codesign', ['--remove-signature', exePath]);
+      run('codesign', ['--force', '--sign', '-', '--identifier', 'app.songstarr', exePath]);
+      run('codesign', ['--verify', '--strict', exePath]);
+    } else {
+      console.warn(`! ${t.id}: must be re-signed on a Mac before it can run (the Release workflow does this).`);
+    }
+  }
 
   const text = startHereText(t.platform, version);
   // Windows Notepad versions before 2018 need CRLF line endings.

@@ -1,6 +1,7 @@
 name: Release
 
-# Builds double-click packages for Windows, macOS and Linux and attaches them to a GitHub Release.
+# Builds double-click packages for Windows, macOS and Linux, launches every one of them on a real
+# machine of that OS, and attaches them to a GitHub Release.
 # Publish either by pushing a version tag (git tag v0.1.0 && git push origin v0.1.0), or from the
 # Actions tab: "Run workflow" with "publish" ticked creates the tag v<package.json version> on the
 # selected commit and the release. Without "publish", the zips are only uploaded as run artifacts.
@@ -18,7 +19,7 @@ permissions:
   contents: write
 
 jobs:
-  release:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -34,10 +35,92 @@ jobs:
       - run: npm test
       # Bun cross-compiles every platform from this one Linux runner.
       - run: npm run release
+      - name: Smoke-test the Linux package
+        run: node release/smoke.mjs release/out/Songstarr-*-linux-x64/Songstarr
       - uses: actions/upload-artifact@v4
         with:
-          name: songstarr-packages
+          name: packages
           path: release/out/*.zip
+
+  macos:
+    # Bun's cross-compiled macOS binaries carry an invalid ad-hoc signature, which macOS rejects
+    # ("damaged" / killed on launch). Re-sign them with Apple's codesign and prove they start.
+    needs: build
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          name: packages
+          path: out
+      - name: Re-sign and verify
+        working-directory: out
+        run: |
+          set -euo pipefail
+          for arch in arm64 x64; do
+            zip=$(ls Songstarr-*-macos-$arch.zip)
+            dir=${zip%.zip}
+            rm -rf "$dir" && unzip -q "$zip"
+            codesign --remove-signature "$dir/Songstarr" || true
+            codesign --force --sign - --identifier app.songstarr "$dir/Songstarr"
+            codesign --verify --strict --verbose=2 "$dir/Songstarr"
+            rm "$zip"
+            ditto -c -k --keepParent "$dir" "$zip"
+          done
+      - name: Launch the Apple-chip build
+        run: node release/smoke.mjs out/Songstarr-*-macos-arm64/Songstarr
+      - name: Launch the Intel build (via Rosetta)
+        run: |
+          if arch -x86_64 /usr/bin/true 2>/dev/null; then
+            node release/smoke.mjs out/Songstarr-*-macos-x64/Songstarr --arch x86_64
+          else
+            echo "::warning::Rosetta is not available on this runner; the Intel build was signed and verified but not launched."
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages-macos
+          path: out/*-macos-*.zip
+
+  windows:
+    needs: build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          name: packages
+          path: out
+      - name: Launch the Windows build
+        shell: pwsh
+        run: |
+          $zip = Get-ChildItem out -Filter 'Songstarr-*-windows-x64.zip' | Select-Object -First 1
+          Expand-Archive $zip.FullName -DestinationPath out
+          $exe = Get-ChildItem out -Recurse -Filter Songstarr.exe | Select-Object -First 1
+          node release/smoke.mjs $exe.FullName
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+  publish:
+    needs: [build, macos, windows]
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: packages
+          path: out
+      - uses: actions/download-artifact@v4
+        with:
+          name: packages-macos
+          path: out-macos
+      # Replace the Linux-built macOS zips with the re-signed ones.
+      - run: cp -f out-macos/*.zip out/ && ls -la out
       - name: Work out the release tag
         id: tag
         run: |
@@ -47,11 +130,10 @@ jobs:
             echo "name=v$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
           fi
       - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v') || inputs.publish
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.name }}
           target_commitish: ${{ github.sha }}
           name: Songstarr ${{ steps.tag.outputs.name }}
-          files: release/out/*.zip
+          files: out/*.zip
           body_path: release/RELEASE_NOTES.md
