@@ -94,7 +94,7 @@ npm run release -- --targets windows-x64,macos-arm64
 
 This writes `release/out/Songstarr-<version>-<platform>.zip` for windows-x64, macos-arm64, macos-x64, linux-x64 and linux-arm64.
 
-To publish, bump `version` in `package.json` and push a tag (`git tag v0.2.0 && git push origin v0.2.0`). The **Release** GitHub Action tests, builds and attaches all zips to a GitHub Release, using `release/RELEASE_NOTES.md` as the description.
+To publish, bump `version` in `package.json`, then either push a tag (`git tag v0.2.0 && git push origin v0.2.0`), or open **Actions → Release → Run workflow** on `main` with **publish** ticked. The workflow tests the code, builds all zips and publishes them as a GitHub Release, using `release/RELEASE_NOTES.md` as the description.
 
 The executable (`release/launcher.ts`):
 - stores the library in `~/Songstarr`
