@@ -6,6 +6,7 @@ import { api } from './api.ts';
 import { formatTime, h, toast } from './dom.ts';
 import { openSongDialog } from './libraryView.ts';
 import { YouTubeVideo, YT_STATE } from './youtube.ts';
+import { metronomeButton, setMetronomeSongContext } from './metronome.ts';
 
 const QUARTER_TICKS = 960;
 const YT_RATES = [0.25, 0.5, 0.75, 1, 1.25, 1.5];
@@ -65,7 +66,16 @@ export async function renderPlayer(root: HTMLElement, songId: string): Promise<C
     ...(useVideo ? YT_RATES : SYNTH_RATES).map((r) => h('option', { value: r, selected: r === 1 }, `${Math.round(r * 100)}%`)),
   );
   const loopBtn = h('button.toggle', { title: 'Loop the selected range (drag across the tab to select). Shortcut: L' }, '⟲ Loop');
-  const metroBtn = h('button.toggle', { title: 'Metronome', disabled: useVideo }, '♩ Metronome');
+  const metroBtn = h(
+    'button.toggle',
+    {
+      title: useVideo
+        ? 'The click track follows the built-in synthesizer. With a video, use the Metronome (M) at the song tempo.'
+        : 'Click track: a click on every beat that follows the tab exactly',
+      disabled: useVideo,
+    },
+    '♩ Click track',
+  );
   const countInBtn = h('button.toggle', { title: 'Count-in before playing', disabled: useVideo }, '1-2-3-4');
   const zoomSel = h(
     'select',
@@ -89,6 +99,29 @@ export async function renderPlayer(root: HTMLElement, songId: string): Promise<C
 
   const syncPanel = h('aside.sync-panel.hidden');
 
+  const favBtn = h('button.star-toggle', { title: 'Favorite' });
+  const doneBtn = h('button.done-toggle');
+  function drawSongButtons(): void {
+    favBtn.textContent = song.favorite ? '★ Favorite' : '☆ Favorite';
+    favBtn.classList.toggle('active', song.favorite);
+    favBtn.title = song.favorite ? 'Remove from favorites' : 'Add to favorites';
+    doneBtn.textContent = song.archivedAt ? '↺ Restore' : '✓ Mark as done';
+    doneBtn.title = song.archivedAt ? 'Move back from the archive to the library' : 'Learned it? Move it to the archive';
+  }
+  async function patchSong(change: { favorite?: boolean; archived?: boolean }, message: string): Promise<void> {
+    try {
+      song = await api.updateSong(song.id, change);
+      drawSongButtons();
+      toast(message);
+    } catch (err) {
+      toast((err as Error).message, 'error');
+    }
+  }
+  favBtn.onclick = () => patchSong({ favorite: !song.favorite }, song.favorite ? 'Removed from favorites' : '★ Added to favorites');
+  doneBtn.onclick = () =>
+    patchSong({ archived: !song.archivedAt }, song.archivedAt ? 'Back in your library' : '✓ Nice work! Moved to the archive');
+  drawSongButtons();
+
   root.replaceChildren(
     h(
       'header.topbar',
@@ -97,6 +130,9 @@ export async function renderPlayer(root: HTMLElement, songId: string): Promise<C
       h('a.brand', { href: '#/' }, h('img.logo', { src: '/icon.svg', alt: APP_NAME })),
       titleEl,
       h('span.spacer'),
+      favBtn,
+      doneBtn,
+      metronomeButton(),
       h(
         'button',
         {
@@ -170,7 +206,9 @@ export async function renderPlayer(root: HTMLElement, songId: string): Promise<C
   at.scoreLoaded.on((score) => {
     applySyncPoints(score);
     drawTracks();
+    updateMetronomeContext();
   });
+  cleanups.push(() => setMetronomeSongContext(null));
 
   at.playerStateChanged.on((e) => {
     playBtn.textContent = e.state === alphaTab.synth.PlayerState.Playing ? '⏸' : '▶';
@@ -253,6 +291,19 @@ export async function renderPlayer(root: HTMLElement, songId: string): Promise<C
   else at.load(tab, tracksToShow);
 
   // ---------- helpers ----------
+  /** Offer the song's tempo (at the current practice speed) to the metronome panel. */
+  function updateMetronomeContext(): void {
+    const score = at.score;
+    if (!score) return;
+    const speed = Number(speedSel.value) || 1;
+    const mb = score.masterBars.find((m) => !m.isAnacrusis) ?? score.masterBars[0];
+    const beats = mb?.timeSignatureNumerator ?? 4;
+    const den = mb?.timeSignatureDenominator ?? 4;
+    // alphaTab tempos count quarter notes; the metronome clicks once per beat of the time signature.
+    const bpm = Math.round(score.tempo * speed * (den / 4));
+    setMetronomeSongContext({ bpm, beatsPerBar: beats, label: `${bpm} BPM, ${beats}/${den}${speed !== 1 ? ` at ${Math.round(speed * 100)}%` : ''}` });
+  }
+
   function setCurrentBar(i: number): void {
     currentBar = i;
     const total = at.score?.masterBars.length ?? 0;
@@ -453,6 +504,7 @@ export async function renderPlayer(root: HTMLElement, songId: string): Promise<C
   };
   speedSel.onchange = () => {
     at.playbackSpeed = Number(speedSel.value);
+    updateMetronomeContext();
   };
   loopBtn.onclick = () => {
     at.isLooping = loopBtn.classList.toggle('active');

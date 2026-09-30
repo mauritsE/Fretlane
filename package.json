@@ -19,7 +19,8 @@
     "desktop": "npm run build && npm run build:desktop && electron .",
     "dist:desktop": "npm run build && npm run build:desktop && node scripts/collect-licenses.mjs && electron-builder --publish never",
     "render-icon": "tsx scripts/render-icon.ts",
-    "start": "npm run build && tsx server/index.ts --serve-dist"
+    "start": "npm run build && tsx server/index.ts --serve-dist",
+    "build-songbook": "tsx scripts/build-songbook.ts"
   },
   "engines": {
     "node": ">=20"

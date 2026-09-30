@@ -27,6 +27,13 @@ for (const file of process.argv.slice(2)) {
   } catch (err) {
     failed = true;
     console.log(`FAIL ${file} [${format}]: ${(err as Error).message}`);
+    // alphaTex parse errors carry line/column diagnostics on the inner error.
+    const inner = (err as { cause?: Record<string, { items?: { message: string; severity: number; start?: { line: number; col: number } }[] }> }).cause;
+    for (const bag of ['lexerDiagnostics', 'parserDiagnostics', 'semanticDiagnostics']) {
+      for (const d of inner?.[bag]?.items ?? []) {
+        if (d.severity >= 2) console.log(`     line ${d.start?.line}:${d.start?.col} ${d.message}`);
+      }
+    }
   }
 }
 process.exit(failed ? 1 : 0);

@@ -8,40 +8,59 @@ import { normalizeSyncPoints } from '../shared/sync.ts';
 import { fetchTab } from './fetchTab.ts';
 
 const MAX_TAB_BYTES = 20 * 1024 * 1024;
+/** The demo songs that shipped before the seed was tracked; libraries from then already had them. */
+const LEGACY_SEEDS = ['first-steps.atex', 'rotterdam-riff.atex', 'night-trail.txt'];
 
 export class Library {
   private readonly dbFile: string;
+  private readonly seededFile: string;
   private readonly tabsDir: string;
   private songs: Song[] = [];
   private writeQueue: Promise<void> = Promise.resolve();
 
   constructor(root: string) {
     this.dbFile = path.join(root, 'songs.json');
+    this.seededFile = path.join(root, 'seeded.json');
     this.tabsDir = path.join(root, 'tabs');
   }
 
-  /** `seed` is a demo folder on disk, or an in-memory source (used by the standalone executable). */
+  /**
+   * `seed` is a demo folder on disk, or an in-memory source. Bundled songs are added on first run,
+   * and songs added to the bundle in a later version are added to existing libraries too. A song
+   * the user deleted is never added again: seeded.json remembers what was seeded.
+   */
   async init(seed?: string | SeedSource): Promise<void> {
     await fs.mkdir(this.tabsDir, { recursive: true });
+    let fresh = false;
     try {
-      this.songs = JSON.parse(await fs.readFile(this.dbFile, 'utf8')) as Song[];
+      this.songs = (JSON.parse(await fs.readFile(this.dbFile, 'utf8')) as Song[]).map(withDefaults);
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
       this.songs = [];
-      if (seed) await this.seed(typeof seed === 'string' ? dirSeedSource(seed) : seed);
-      await this.persist();
+      fresh = true;
     }
+    const added = seed ? await this.seed(typeof seed === 'string' ? dirSeedSource(seed) : seed, fresh) : 0;
+    if (fresh || added) await this.persist();
   }
 
-  /** First run: copy the bundled demo songs (original compositions) into the library. */
-  private async seed(source: SeedSource): Promise<void> {
+  /** Adds bundled songs that were never seeded before. Returns how many were added. */
+  private async seed(source: SeedSource, fresh: boolean): Promise<number> {
     let manifest: DemoEntry[];
     try {
       manifest = JSON.parse(new TextDecoder().decode(await source.read('demo-songs.json'))) as DemoEntry[];
     } catch {
-      return;
+      return 0;
     }
+    let seeded: Set<string>;
+    try {
+      seeded = new Set(JSON.parse(await fs.readFile(this.seededFile, 'utf8')) as string[]);
+    } catch {
+      // No record yet: a new library, or one from before the record existed.
+      seeded = new Set(fresh ? [] : [...LEGACY_SEEDS, ...this.songs.map((s) => s.tabSource)]);
+    }
+    let added = 0;
     for (const entry of manifest) {
+      if (seeded.has(entry.file)) continue;
       const bytes = await source.read(entry.file);
       const song = await this.add(
         {
@@ -54,11 +73,18 @@ export class Library {
         false,
       );
       if (entry.syncPoints) song.syncPoints = entry.syncPoints;
+      seeded.add(entry.file);
+      added++;
     }
+    await fs.writeFile(this.seededFile, JSON.stringify([...seeded], null, 2));
+    return added;
   }
 
+  /** Favorites first, then by artist and title. */
   list(): Song[] {
-    return [...this.songs].sort((a, b) => a.artist.localeCompare(b.artist) || a.title.localeCompare(b.title));
+    return [...this.songs].sort(
+      (a, b) => Number(b.favorite) - Number(a.favorite) || a.artist.localeCompare(b.artist) || a.title.localeCompare(b.title),
+    );
   }
 
   get(id: string): Song | undefined {
@@ -115,6 +141,8 @@ export class Library {
       syncPoints: [],
       defaultTrack: 0,
       tags: input.tags ?? [],
+      favorite: false,
+      archivedAt: null,
       createdAt: now,
       updatedAt: now,
     };
@@ -132,6 +160,11 @@ export class Library {
     if (patch.youtubeId !== undefined) song.youtubeId = parseYouTubeId(patch.youtubeId);
     if (patch.defaultTrack !== undefined) song.defaultTrack = Math.max(0, Math.floor(Number(patch.defaultTrack)) || 0);
     if (patch.tags !== undefined) song.tags = patch.tags.map(String);
+    if (patch.favorite !== undefined) song.favorite = patch.favorite === true;
+    if (patch.archived !== undefined) {
+      if (patch.archived !== true) song.archivedAt = null;
+      else if (!song.archivedAt) song.archivedAt = new Date().toISOString();
+    }
     if (patch.syncPoints !== undefined) {
       song.syncPoints = normalizeSyncPoints(
         patch.syncPoints.map((p) => ({ bar: Math.max(0, Math.floor(Number(p.bar))), time: Math.max(0, Number(p.time)) })),
@@ -159,6 +192,11 @@ export class Library {
     });
     return this.writeQueue;
   }
+}
+
+/** Songs saved by older versions lack the newer fields. */
+function withDefaults(song: Song): Song {
+  return { ...song, favorite: song.favorite === true, archivedAt: song.archivedAt ?? null };
 }
 
 type DemoEntry = Omit<NewSongInput, 'tabFile'> & { file: string; syncPoints?: Song['syncPoints'] };

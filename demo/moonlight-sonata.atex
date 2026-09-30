@@ -1,0 +1,17 @@
+\title "Moonlight Sonata"
+\subtitle "Piano Sonata No. 14, 1st movement, 1801 (opening, in A minor)"
+\artist "Ludwig van Beethoven"
+\music "Ludwig van Beethoven"
+\tab "Fretlane songbook arrangement (public domain melody)"
+\tempo 56
+
+\track "Melody"
+\staff {tabs}
+\tuning (e4 b3 g3 d3 a2 e2)
+\instrument acousticguitarnylon
+\ts (4 4) \ks aminor :8 (0.5 2.4){tu 3} 2.3{tu 3} 1.2{tu 3} 2.4{tu 3} 2.3{tu 3} 1.2{tu 3} 2.4{tu 3} 2.3{tu 3} 1.2{tu 3} 2.4{tu 3} 2.3{tu 3} 1.2{tu 3} |
+:8 (3.6 2.4){tu 3} 2.3{tu 3} 1.2{tu 3} 2.4{tu 3} 2.3{tu 3} 1.2{tu 3} 2.4{tu 3} 2.3{tu 3} 1.2{tu 3} 2.4{tu 3} 2.3{tu 3} 1.2{tu 3} |
+:8 (1.6 3.4){tu 3} 2.3{tu 3} 1.2{tu 3} 3.4{tu 3} 2.3{tu 3} 1.2{tu 3} 3.4{tu 3} 3.3{tu 3} 3.2{tu 3} 3.4{tu 3} 3.3{tu 3} 3.2{tu 3} |
+:8 (0.6 2.4){tu 3} 1.3{tu 3} 3.2{tu 3} 2.4{tu 3} 2.3{tu 3} 1.2{tu 3} 2.4{tu 3} 2.3{tu 3} 0.2{tu 3} 1.4{tu 3} 1.3{tu 3} 0.2{tu 3} |
+:8 (0.5 2.4){tu 3} 2.3{tu 3} 1.2{tu 3} 2.4{tu 3} 2.3{tu 3} 1.2{tu 3} 2.4{tu 3} 2.3{tu 3} 1.2{tu 3} 2.4{tu 3} 2.3{tu 3} 1.2{tu 3} |
+:1 (0.5 2.4 2.3 1.2)

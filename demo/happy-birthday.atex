@@ -1,0 +1,48 @@
+\title "Happy Birthday"
+\subtitle "'Good Morning to All', 1893"
+\artist "Mildred J. Hill & Patty Hill"
+\music "Mildred J. Hill & Patty Hill"
+\tab "Fretlane songbook arrangement (public domain melody)"
+\tempo 100
+
+\track "Melody"
+\staff {tabs}
+\tuning (e4 b3 g3 d3 a2 e2)
+\instrument acousticguitarsteel
+\ts (3 4) \ks cmajor \ac :8 0.3{d} :16 0.3 |
+:4 2.3 0.3 1.2 |
+:2 0.2 :8 0.3{d} :16 0.3 |
+:4 2.3 0.3 3.2 |
+:2 1.2 :8 0.3{d} :16 0.3 |
+:4 3.1 0.1 1.2 |
+:4 0.2 2.3 :8 1.1{d} :16 1.1 |
+:4 0.1 1.2 3.2 |
+:2 1.2{d}
+
+\track "Rhythm guitar"
+\staff {tabs}
+\tuning (e4 b3 g3 d3 a2 e2)
+\instrument acousticguitarnylon
+:4 r |
+:4 3.5{ch "C"} (0.3 1.2 0.1) (0.3 1.2 0.1) |
+:4 3.6{ch "G"} (0.3 0.2 3.1) (0.3 0.2 3.1) |
+:4 3.6{ch "G"} (0.3 0.2 3.1) (0.3 0.2 3.1) |
+:4 3.5{ch "C"} (0.3 1.2 0.1) (0.3 1.2 0.1) |
+:4 3.5{ch "C"} (0.3 1.2 0.1) (0.3 1.2 0.1) |
+:4 1.6{ch "F"} (2.3 1.2 1.1) (2.3 1.2 1.1) |
+:4 3.5{ch "C"} 3.5{ch "C"} 3.6{ch "G"} |
+:4 3.5{ch "C"} (0.3 1.2 0.1) (0.3 1.2 0.1)
+
+\track "Bass"
+\staff {tabs}
+\tuning (g2 d2 a1 e1)
+\instrument electricbassfinger
+:4 r |
+:2 3.3{d} |
+:2 3.4{d} |
+:2 3.4{d} |
+:2 3.3{d} |
+:2 3.3{d} |
+:2 1.4{d} |
+:4 3.3 3.3 3.4 |
+:2 3.3{d}

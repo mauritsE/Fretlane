@@ -3,6 +3,11 @@ import { parseYouTubeId } from '../shared/util.ts';
 import { api, fileToBase64 } from './api.ts';
 import { APP_NAME } from '../shared/brand.ts';
 import { h, toast } from './dom.ts';
+import { metronomeButton } from './metronome.ts';
+
+type LibraryFilter = 'all' | 'favorites' | 'archive';
+/** Remembered while the app is open, so "Back to library" returns to the same view. */
+let filter: LibraryFilter = 'all';
 
 export async function renderLibrary(root: HTMLElement): Promise<void> {
   let songs: Song[] = [];
@@ -10,6 +15,7 @@ export async function renderLibrary(root: HTMLElement): Promise<void> {
   let activeTag = '';
 
   const list = h('div.song-grid');
+  const viewBar = h('nav.view-bar', { 'aria-label': 'Library views' });
   const tagBar = h('div.tag-bar');
   const search = h('input.search', {
     type: 'search',
@@ -27,9 +33,10 @@ export async function renderLibrary(root: HTMLElement): Promise<void> {
       {},
       h('a.brand', { href: '#/' }, h('img.logo', { src: '/icon.svg', alt: '' }), APP_NAME),
       search,
+      metronomeButton(),
       h('button.primary', { onclick: () => openSongDialog(null, reload) }, '+ Add song'),
     ),
-    h('main.library', {}, tagBar, list),
+    h('main.library', {}, viewBar, tagBar, list),
   );
   search.focus();
 
@@ -44,7 +51,33 @@ export async function renderLibrary(root: HTMLElement): Promise<void> {
   }
 
   function draw(): void {
-    const tags = [...new Set(songs.flatMap((s) => s.tags))].sort();
+    const active = songs.filter((s) => !s.archivedAt);
+    const counts: Record<LibraryFilter, number> = {
+      all: active.length,
+      favorites: active.filter((s) => s.favorite).length,
+      archive: songs.length - active.length,
+    };
+    viewBar.replaceChildren(
+      ...(['all', 'favorites', 'archive'] as const).map((f) =>
+        h(
+          'button.view',
+          {
+            class: f === filter ? 'active' : '',
+            'data-view': f,
+            onclick: () => {
+              filter = f;
+              activeTag = '';
+              draw();
+            },
+          },
+          { all: 'All songs', favorites: '★ Favorites', archive: '✓ Archive' }[f],
+          h('span.count', {}, String(counts[f])),
+        ),
+      ),
+    );
+    const inView = filter === 'archive' ? songs.filter((s) => s.archivedAt) : filter === 'favorites' ? active.filter((s) => s.favorite) : active;
+    const tags = [...new Set(inView.flatMap((s) => s.tags))].sort();
+    if (activeTag && !tags.includes(activeTag)) activeTag = '';
     tagBar.replaceChildren(
       ...['', ...tags].map((t) =>
         h(
@@ -61,35 +94,69 @@ export async function renderLibrary(root: HTMLElement): Promise<void> {
       ),
     );
     const q = query.trim().toLowerCase();
-    const shown = songs.filter(
+    const shown = inView.filter(
       (s) =>
         (!activeTag || s.tags.includes(activeTag)) &&
         (!q || `${s.title} ${s.artist} ${s.tags.join(' ')}`.toLowerCase().includes(q)),
     );
+    if (filter === 'archive') shown.sort((a, b) => (b.archivedAt ?? '').localeCompare(a.archivedAt ?? ''));
     if (!shown.length) {
-      list.replaceChildren(
-        h('p.empty', {}, songs.length ? 'No songs match your search.' : 'Your library is empty. Click "+ Add song" to import a tab.'),
-      );
+      const empty =
+        q || activeTag
+          ? 'No songs match your search.'
+          : filter === 'favorites'
+            ? 'No favorites yet. Click the ☆ on a song to add it here.'
+            : filter === 'archive'
+              ? 'Nothing archived yet. When you have learned a song, click ✓ to move it here.'
+              : 'Your library is empty. Click "+ Add song" to import a tab.';
+      list.replaceChildren(h('p.empty', {}, empty));
       return;
     }
     list.replaceChildren(...shown.map((s) => songCard(s)));
   }
 
+  async function patch(s: Song, change: { favorite?: boolean; archived?: boolean }, message: string): Promise<void> {
+    try {
+      await api.updateSong(s.id, change);
+      toast(message);
+      await reload(); // the server's order puts favorites first
+
+    } catch (err) {
+      toast((err as Error).message, 'error');
+    }
+  }
+
   function songCard(s: Song): HTMLElement {
     const thumb = s.youtubeId
       ? h('img.thumb', { src: `https://i.ytimg.com/vi/${s.youtubeId}/mqdefault.jpg`, alt: '', loading: 'lazy' })
-      : h('div.thumb.no-video', {}, h('span', {}, '𝄞'));
+      : h('div.thumb.no-video', { style: `--hue: ${hue(s.id)}` }, h('span.initial', {}, [...s.title][0] ?? '𝄞'), h('span.clef', {}, '𝄞'));
+    const level = LEVELS.find((l) => s.tags.includes(l));
+    const archived = !!s.archivedAt;
     return h(
       'article.song-card',
-      {},
+      { class: archived ? 'archived' : '', 'data-title': s.title },
+      h(
+        'button.star',
+        {
+          class: s.favorite ? 'on' : '',
+          title: s.favorite ? 'Remove from favorites' : 'Add to favorites',
+          'aria-pressed': String(s.favorite),
+          onclick: () => patch(s, { favorite: !s.favorite }, s.favorite ? `Removed "${s.title}" from favorites` : `★ "${s.title}" is a favorite`),
+        },
+        s.favorite ? '★' : '☆',
+      ),
       h('a.card-link', { href: `#/song/${encodeURIComponent(s.id)}` }, thumb, h('div.card-title', {}, s.title), h('div.card-artist', {}, s.artist)),
+      archived ? h('div.card-done', {}, `✓ Done ${new Date(s.archivedAt!).toLocaleDateString()}`) : null,
       h(
         'div.card-meta',
         {},
-        h('span.badge', { title: s.tabSource }, s.tabFormat.toUpperCase()),
+        level ? h('span.badge.level', { 'data-level': level }, level) : h('span.badge', { title: s.tabSource }, s.tabFormat.toUpperCase()),
         s.youtubeId ? h('span.badge.yt', { title: 'Plays along with YouTube' }, '▶ YouTube') : h('span.badge', { title: 'Uses the built-in synthesizer' }, 'Synth'),
         s.syncPoints.length ? h('span.badge.synced', {}, `${s.syncPoints.length} sync`) : null,
         h('span.spacer'),
+        archived
+          ? h('button.icon.restore', { title: 'Back to the library', onclick: () => patch(s, { archived: false }, `"${s.title}" is back in your library`) }, '↺')
+          : h('button.icon.done', { title: 'Mark as done and move to the archive', onclick: () => patch(s, { archived: true }, `✓ "${s.title}" moved to the archive`) }, '✓'),
         h('button.icon', { title: 'Edit', onclick: () => openSongDialog(s, reload) }, '✎'),
         h(
           'button.icon.danger',
@@ -109,6 +176,15 @@ export async function renderLibrary(root: HTMLElement): Promise<void> {
   }
 
   await reload();
+}
+
+const LEVELS = ['beginner', 'intermediate', 'advanced'];
+
+/** A stable colour per song for cards without a video thumbnail. */
+function hue(id: string): number {
+  let h = 0;
+  for (const ch of id) h = (h * 31 + ch.charCodeAt(0)) % 360;
+  return h;
 }
 
 /** Add (song = null) or edit an existing song. */

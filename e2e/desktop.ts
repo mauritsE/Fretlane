@@ -96,8 +96,15 @@ await Promise.race([closed, new Promise((_, rej) => setTimeout(() => rej(new Err
   () => check(true, 'closing the window quits the app'),
   () => check(false, 'closing the window quits the app'),
 );
-const lib = JSON.parse(readFileSync(path.join(home, 'Fretlane', 'songs.json'), 'utf8')) as unknown[];
-check(lib.length === 1, 'the migrated library is not reseeded with demo songs');
+// An upgraded library gets the new songbook, but not the original demos (the user may have deleted them).
+const lib = JSON.parse(readFileSync(path.join(home, 'Fretlane', 'songs.json'), 'utf8')) as { title: string }[];
+const seed = JSON.parse(readFileSync(new URL('../demo/demo-songs.json', import.meta.url), 'utf8')) as { title: string; tags: string[] }[];
+const songbook = seed.filter((e) => e.tags.includes('songbook'));
+const demoTitles = seed.filter((e) => !e.tags.includes('songbook')).map((e) => e.title);
+check(
+  lib.length === 1 + songbook.length && !lib.some((s) => demoTitles.includes(s.title)),
+  `the migrated library gains the ${songbook.length} songbook songs, not the old demos (${lib.length} songs)`,
+);
 
 console.log(failures ? `\n${failures} check(s) failed` : '\nAll desktop checks passed');
 process.exit(failures ? 1 : 0);

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { HttpError, Library } from '../server/library.ts';
 
 const SEED = path.resolve(import.meta.dirname, '..', 'demo');
+const SEED_COUNT = (JSON.parse(await fs.readFile(path.join(SEED, 'demo-songs.json'), 'utf8')) as unknown[]).length;
 const ASCII = ['e|--0--3--|', 'B|--1--0--|', 'G|--0--0--|', 'D|--2--0--|', 'A|--3--2--|', 'E|-----3--|'].join('\n');
 
 let root: string;
@@ -28,11 +29,13 @@ describe('Library', () => {
     expect(JSON.parse(await fs.readFile(path.join(root, 'songs.json'), 'utf8'))).toEqual([]);
   });
 
-  it('seeds the 3 demo songs on first run', async () => {
+  it('seeds the demo songs and the songbook on first run', async () => {
     const lib = await fresh();
     const songs = lib.list();
-    expect(songs).toHaveLength(3);
-    expect(songs.map((s) => s.title).sort()).toEqual(['First Steps', 'Night Trail (ASCII import)', 'Rotterdam Riff']);
+    expect(SEED_COUNT).toBeGreaterThanOrEqual(23);
+    expect(songs).toHaveLength(SEED_COUNT);
+    expect(songs.map((s) => s.title)).toEqual(expect.arrayContaining(['First Steps', 'Night Trail (ASCII import)', 'Rotterdam Riff', 'Greensleeves']));
+    expect(songs.every((s) => s.favorite === false && s.archivedAt === null)).toBe(true);
     for (const s of songs) {
       await expect(fs.stat(lib.tabPath(s))).resolves.toBeTruthy();
     }
@@ -49,6 +52,50 @@ describe('Library', () => {
     for (const s of lib.list()) await lib.remove(s.id);
     const again = await fresh();
     expect(again.list()).toEqual([]);
+  });
+
+  it('adds newly bundled songs to a library from an older version, once', async () => {
+    // A library written by v0.2: the three original demos, no seeded.json, no favorite/archive fields.
+    const old = await fresh(false);
+    for (const file of ['first-steps.atex', 'rotterdam-riff.atex']) {
+      await old.add({ tabFile: { name: file, dataBase64: (await fs.readFile(path.join(SEED, file))).toString('base64') } });
+    }
+    const raw = JSON.parse(await fs.readFile(path.join(root, 'songs.json'), 'utf8')) as Record<string, unknown>[];
+    for (const song of raw) {
+      delete song.favorite;
+      delete song.archivedAt;
+    }
+    await fs.writeFile(path.join(root, 'songs.json'), JSON.stringify(raw));
+
+    const upgraded = await fresh();
+    const titles = upgraded.list().map((s) => s.title);
+    // night-trail.txt was deleted by that user and must not come back; songbook songs are new.
+    expect(titles.filter((t) => t.startsWith('Night Trail'))).toEqual([]);
+    expect(titles).toContain('Greensleeves');
+    expect(upgraded.list()).toHaveLength(SEED_COUNT - 1);
+    expect(upgraded.list().every((s) => s.favorite === false && s.archivedAt === null)).toBe(true);
+
+    // Deleting a bundled song sticks across restarts.
+    const green = upgraded.list().find((s) => s.title === 'Greensleeves')!;
+    await upgraded.remove(green.id);
+    const again = await fresh();
+    expect(again.list().map((s) => s.title)).not.toContain('Greensleeves');
+    expect(again.list()).toHaveLength(SEED_COUNT - 2);
+  });
+
+  it('favorites and archives songs', async () => {
+    const lib = await fresh(false);
+    const a = await lib.add({ tabText: ASCII, title: 'A', artist: 'A' });
+    const b = await lib.add({ tabText: ASCII, title: 'B', artist: 'B' });
+    await lib.update(b.id, { favorite: true });
+    expect(lib.list().map((s) => s.title)).toEqual(['B', 'A']); // favorites first
+
+    const archived = await lib.update(a.id, { archived: true });
+    expect(archived.archivedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    const stamp = archived.archivedAt;
+    expect((await lib.update(a.id, { archived: true })).archivedAt).toBe(stamp); // archiving again keeps the date
+    expect((await lib.update(a.id, { archived: false })).archivedAt).toBeNull();
+    expect((await lib.update(b.id, { favorite: 'yes' as unknown as boolean })).favorite).toBe(false);
   });
 
   it('add() converts pasted ASCII tab to alphatex', async () => {
@@ -177,7 +224,7 @@ describe('Library', () => {
 
     const reloaded = new Library(root);
     await reloaded.init(SEED);
-    expect(reloaded.list()).toHaveLength(4);
+    expect(reloaded.list()).toHaveLength(SEED_COUNT + 1);
     const got = reloaded.get(added.id)!;
     expect(got).toEqual(lib.get(added.id));
     expect(got.syncPoints).toEqual([{ bar: 0, time: 1 }, { bar: 2, time: 4 }]);
@@ -186,7 +233,7 @@ describe('Library', () => {
     await expect(fs.stat(path.join(root, 'songs.json.tmp'))).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
-  it('list() is sorted by artist then title', async () => {
+  it('list() is sorted by artist then title (favorites aside)', async () => {
     const lib = await fresh(false);
     await lib.add({ title: 'B', artist: 'Y', tabText: ASCII });
     await lib.add({ title: 'A', artist: 'Y', tabText: ASCII });

@@ -1,0 +1,48 @@
+\title "Bourrée in E minor"
+\subtitle "Lute Suite BWV 996, c. 1710 (first part)"
+\artist "Johann Sebastian Bach"
+\music "Johann Sebastian Bach"
+\tab "Fretlane songbook arrangement (public domain melody)"
+\tempo 92
+
+\track "Melody"
+\staff {tabs}
+\tuning (e4 b3 g3 d3 a2 e2)
+\instrument acousticguitarnylon
+\ts (4 4) \ks eminor \ac :8 0.1 2.1 |
+:4 3.1 :8 2.1 0.1 :4 4.2 :8 0.1 2.1 |
+:4 0.2 :8 2.2 4.2 :4 0.1 :8 3.2 1.2 |
+:4 0.2 :8 2.3 0.3 :4 4.4 :8 0.3 2.3 |
+:8 0.2 2.3 0.3 4.4 :4 2.4 :8 0.1 2.1 |
+:4 3.1 :8 2.1 0.1 :4 4.2 :8 0.1 2.1 |
+:4 0.2 :8 2.2 4.2 :4 0.1 :8 3.2 1.2 |
+:4 0.2 :8 2.3 0.3 :4 4.4 :8 0.3 2.3 |
+:8 0.2 2.3 0.3 4.4 :2 2.4
+
+\track "Rhythm guitar"
+\staff {tabs}
+\tuning (e4 b3 g3 d3 a2 e2)
+\instrument acousticguitarnylon
+:4 r |
+:8 0.6{ch "Em"} 0.2 2.5 0.1 2.5{ch "B7"} 0.2 1.4 2.1 |
+:8 2.5{ch "B7"} 0.2 1.4 2.1 0.6{ch "Em"} 0.2 2.5 0.1 |
+:8 3.6{ch "G"} 0.2 2.5 3.1 0.4{ch "D"} 3.2 2.3 2.1 |
+:8 0.6{ch "Em"} 0.2 2.5 0.1 0.6{ch "Em"} 0.2 2.5 0.1 |
+:8 0.6{ch "Em"} 0.2 2.5 0.1 2.5{ch "B7"} 0.2 1.4 2.1 |
+:8 2.5{ch "B7"} 0.2 1.4 2.1 0.6{ch "Em"} 0.2 2.5 0.1 |
+:8 3.6{ch "G"} 0.2 2.5 3.1 0.4{ch "D"} 3.2 2.3 2.1 |
+:8 0.6{ch "Em"} 0.2 2.5 0.1 0.6{ch "Em"} 0.2 2.5 0.1
+
+\track "Bass"
+\staff {tabs}
+\tuning (g2 d2 a1 e1)
+\instrument electricbassfinger
+:4 r |
+:4 0.4 2.3 2.3 4.2 |
+:4 2.3 4.2 0.4 2.3 |
+:4 3.4 0.2 0.2 2.1 |
+:4 0.4 2.3 0.4 2.3 |
+:4 0.4 2.3 2.3 4.2 |
+:4 2.3 4.2 0.4 2.3 |
+:4 3.4 0.2 0.2 2.1 |
+:4 0.4 2.3 0.4 2.3
