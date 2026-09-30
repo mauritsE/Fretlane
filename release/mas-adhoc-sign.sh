@@ -11,6 +11,10 @@ inherit=build/entitlements.mas.inherit.plist
 for item in "$app"/Contents/Frameworks/*; do
   codesign --force --deep --sign - --entitlements "$inherit" "$item"
 done
+# The MAS build's login helper is a standalone app: it can't inherit, so it gets the app's sandbox.
+for item in "$app"/Contents/Library/LoginItems/*.app; do
+  [ -e "$item" ] && codesign --force --deep --sign - --entitlements "$ent" "$item"
+done
 codesign --force --sign - --entitlements "$ent" "$app"
 codesign --verify --deep --strict --verbose=2 "$app"
 codesign -d --entitlements - "$app" 2>/dev/null | grep -q 'com.apple.security.app-sandbox' || { echo 'app-sandbox entitlement missing'; exit 1; }
