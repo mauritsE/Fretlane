@@ -1,6 +1,6 @@
 # Marketing video
 
-`fretlane-demo.mp4`: 1920×1080, 79 s, H.264 + AAC, burned-in captions (LinkedIn autoplays muted).
+`fretlane-demo.mp4`: 1920×1080, 96 s, H.264 + AAC, burned-in captions (LinkedIn autoplays muted).
 `LINKEDIN_POST.md` holds the post that goes with it.
 
 ## What is real
@@ -9,11 +9,13 @@
   added to the page is a visible mouse pointer and click ring, because headless Chrome draws none.
 - **The music under "Play along" is the app's own synthesizer**, exported with alphaTab's audio
   export (`export-audio.ts`) and aligned to the moment playback starts in the recording.
+- **YouTube sync is Maurits's own screen recording** (`work/youtube-sync.mov`, not in git): Fretlane
+  on his Mac with an imported tab of "Animals" (Architects) synced to the song's YouTube video.
+  It's cropped to the app window, so the browser's tabs, address bar and profile are not shown.
+  That recording has no sound; the video's audio there is narration only.
 - **Drawn frames:** the title card, the "Everything you need to practise" card and the end card.
-  YouTube sync appears only on that card (as text), because this environment can't play real
-  YouTube videos.
 - **Narration:** a local AI voice (Kokoro, voice `am_michael`). To use your own voice, record the
-  12 lines from the timeline below and replace the files in `work/tts/`.
+  14 lines from the timeline below and replace the files in `work/tts/`.
 
 ## Timeline
 
@@ -29,8 +31,10 @@
 | 0:48 | Favorites | Star your favorite songs and they jump to the top of your library. |
 | 0:55 | Archive | Learned one? Mark it as done, and it moves to your archive. |
 | 1:00 | Import dialog | And bring your own tabs: Guitar Pro files, links, or plain text. |
-| 1:06 | Features card | It also syncs tabs to YouTube videos, runs on Mac, Windows and Linux, and keeps everything on your own computer. |
-| 1:15 | End card | Fretlane. Free and open source. The link is in the post. |
+| 1:06 | YouTube sync (your recording) | Link a YouTube video, and the tab follows the recording, bar by bar. |
+| 1:16 | Switching tracks during the video | Switch between lead, rhythm and bass while the video keeps playing. |
+| 1:25 | Features card | It runs on Mac, Windows and Linux, and keeps everything on your own computer. |
+| 1:31 | End card | Fretlane. Free and open source. The link is in the post. |
 
 ## Rebuild
 
@@ -41,6 +45,6 @@ npx tsx marketing/export-audio.ts http://localhost:5183 "In the Hall of the Moun
 python3 marketing/build.py        # needs ffmpeg, Pillow, kokoro-onnx, soundfile; see the docstring
 ```
 
-`record.ts` writes frames plus `marks.json`; `build.py` turns them into `work/raw.mp4` itself and
+Put the YouTube-sync recording at `marketing/work/youtube-sync.mov` first. `record.ts` writes frames plus `marks.json`; `build.py` turns them into `work/raw.mp4` itself and
 caches the narration per line in `work/tts/`. The Kokoro model files go in `marketing/work/`
 (download links in `build.py`).
