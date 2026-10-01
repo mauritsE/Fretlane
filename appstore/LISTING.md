@@ -11,9 +11,9 @@ Copy these into App Store Connect (My Apps → Fretlane → the version page). C
 | Age rating | 4+ (no objectionable content; the app can show YouTube videos the user links, see "Web access" below) |
 | Price | Free |
 | Copyright | 2026 Maurits Elzinga |
-| Support URL | https://github.com/mauritsE/Songstarr/issues |
-| Marketing URL | https://github.com/mauritsE/Songstarr |
-| Privacy Policy URL | https://github.com/mauritsE/Songstarr/blob/main/appstore/PRIVACY.md |
+| Support URL | https://github.com/mauritsE/Fretlane/issues |
+| Marketing URL | https://github.com/mauritsE/Fretlane |
+| Privacy Policy URL | https://github.com/mauritsE/Fretlane/blob/main/appstore/PRIVACY.md |
 
 ## Promotional text (170)
 

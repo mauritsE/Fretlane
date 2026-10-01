@@ -27,7 +27,7 @@ If you play: what's the first song you'd load into it?
 
 ---
 
-**First comment:** Download and source: https://github.com/mauritsE/Songstarr (free, MIT licence)
+**First comment:** Download and source: https://github.com/mauritsE/Fretlane (free, MIT licence)
 
 ## Before you post, check
 - "A Mac App Store version is on its way": keep it only if you plan to finish `appstore/SUBMITTING.md`. Otherwise delete the sentence.

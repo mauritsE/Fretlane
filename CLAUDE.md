@@ -1,6 +1,6 @@
 # Fretlane
 
-(Formerly "Songstarr"; the GitHub repo still carries the old name. The app name lives in `shared/brand.ts`.)
+(Formerly "Songstarr". The app name lives in `shared/brand.ts`; the GitHub repo is `mauritsE/Fretlane`.)
 
 A local-first, open-source Songsterr-style tab player. The browser app (vanilla TypeScript + Vite + alphaTab) talks to a small Node server that stores the library in `library/` as `songs.json` plus tab files.
 

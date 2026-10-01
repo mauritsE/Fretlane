@@ -14,7 +14,7 @@ Everything runs on your machine. Nothing is uploaded anywhere.
 
 ## Download (no programming needed)
 
-Go to the [Releases page](https://github.com/mauritsE/Songstarr/releases) and download Fretlane for your computer:
+Go to the [Releases page](https://github.com/mauritsE/Fretlane/releases) and download Fretlane for your computer:
 
 - **Windows:** `Fretlane-…-windows-setup.exe`. Double-click it and it installs and opens, with Start menu and desktop shortcuts.
 - **Mac:** `Fretlane-…-mac-arm64.zip` (Apple chip) or `…-mac-x64.zip` (Intel). Unzip it and drag **Fretlane** to Applications.
@@ -29,7 +29,7 @@ Your songs are saved in a `Fretlane` folder in your home folder (**File → Show
 Requires Node.js 20+.
 
 ```bash
-git clone https://github.com/mauritsE/Songstarr.git
+git clone https://github.com/mauritsE/Fretlane.git
 cd Fretlane
 npm install
 npm run dev        # UI on http://localhost:5173 (API on :5174, proxied)
@@ -136,9 +136,9 @@ Rendering and playback are done by [alphaTab](https://alphatab.net) (MPL-2.0). M
 
 `.claude/skills/` holds project skills with the repeatable know-how: adding and syncing songs, verifying changes, and the alphaTab integration details. `CLAUDE.md` describes the architecture and which model to use for which kind of task.
 
-## Support Songstarr
+## Support Fretlane
 
-Songstarr is free and open source. If it helps you learn songs and you'd like to say thanks, you can [buy me a coffee on Ko-fi](https://ko-fi.com/mauritselzinga). Bug reports and ideas are just as welcome.
+Fretlane is free and open source. If it helps you learn songs and you'd like to say thanks, you can [buy me a coffee on Ko-fi](https://ko-fi.com/mauritselzinga). Bug reports and ideas are just as welcome.
 
 ## License
 

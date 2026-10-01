@@ -173,7 +173,7 @@ def card(kind):
             d.text((cx, 720), 'A free guitar tab player', font=font(400, 32), fill=MUTED, anchor='mm')
         else:
             d.text((cx, 650), 'Free and open source', font=font(600, 46), fill=ACCENT, anchor='mm')
-            d.text((cx, 720), 'github.com/mauritsE/Songstarr', font=font(400, 36), fill=TEXT, anchor='mm')
+            d.text((cx, 720), 'github.com/mauritsE/Fretlane', font=font(400, 36), fill=TEXT, anchor='mm')
     else:
         header(im, 'And also')
         d.text((200, 230), 'Everything you need to practise', font=font(800, 64), fill=TEXT)
