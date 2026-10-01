@@ -13,7 +13,7 @@ import { APP_NAME, LEGACY_NAME, envVar } from '../shared/brand.ts';
 
 const FIRST_PORT = Number(envVar('PORT') ?? 5173);
 const PORT_ATTEMPTS = 20;
-const REPO_URL = 'https://github.com/mauritsE/Songstarr';
+const REPO_URL = 'https://github.com/mauritsE/Fretlane';
 /** Smoke tests set this: print the server URL once the UI has loaded. */
 const SMOKE = !!envVar('SMOKE');
 

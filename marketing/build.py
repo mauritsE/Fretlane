@@ -57,6 +57,8 @@ marks = assemble_recording()
 # markers; `speed` is the most the footage may be sped up, `realtime` keeps it at 1x so the app's
 # own audio stays in sync. `crop` (x, y, w, h in the 1920x1080 recording, 16:9) zooms in so the
 # UI is readable on a phone.
+YT_REC = WORK / 'youtube-sync.mov'
+
 SHOTS = [
     dict(card='intro', say='Meet Fretlane: a free, open-source guitar tab player.'),
     dict(chapter='Songbook', t0=marks['library'], t1=marks['open'], speed=1.35, crop=(240, 0, 1440, 810),
@@ -77,8 +79,14 @@ SHOTS = [
          say='Learned one? Mark it as done, and it moves to your archive.'),
     dict(chapter='Your own tabs', t0=marks['import'], t1=marks['end'], speed=1.3, crop=(400, 60, 1120, 630),
          say='And bring your own tabs: Guitar Pro files, links, or plain text.'),
+    # Recorded by Maurits on his own Mac (work/youtube-sync.mov, not in git): a tab he imported,
+    # synced to the song's YouTube video. Cropped to the app window, so no browser chrome.
+    dict(chapter='YouTube sync', src=YT_REC, t0=0.3, t1=10.3, realtime=True, crop=(50, 112, 1820, 1066),
+         say='Link a YouTube video, and the tab follows the recording, bar by bar.'),
+    dict(chapter='YouTube sync', src=YT_REC, t0=15.5, t1=28.0, speed=1.4, crop=(50, 112, 1820, 1066),
+         say='Switch between lead, rhythm and bass while the video keeps playing.'),
     dict(card='features',
-         say='It also syncs tabs to YouTube videos, runs on Mac, Windows and Linux, and keeps everything on your own computer.'),
+         say='It runs on Mac, Windows and Linux, and keeps everything on your own computer.'),
     dict(card='outro', say='Fretlane. Free and open source. The link is in the post.'),
 ]
 # How the voice should pronounce things (captions keep the written form).
@@ -173,12 +181,12 @@ def card(kind):
             d.text((cx, 720), 'A free guitar tab player', font=font(400, 32), fill=MUTED, anchor='mm')
         else:
             d.text((cx, 650), 'Free and open source', font=font(600, 46), fill=ACCENT, anchor='mm')
-            d.text((cx, 720), 'github.com/mauritsE/Songstarr', font=font(400, 36), fill=TEXT, anchor='mm')
+            d.text((cx, 720), 'github.com/mauritsE/Fretlane', font=font(400, 36), fill=TEXT, anchor='mm')
     else:
         header(im, 'And also')
         d.text((200, 230), 'Everything you need to practise', font=font(800, 64), fill=TEXT)
         items = [
-            ('YouTube sync', 'Pin the tab to any video and the cursor follows the recording'),
+            ('Loops and count-in', 'Drag across the tab to loop the tricky part'),
             ('Mac, Windows and Linux', 'A normal desktop app, no account needed'),
             ('Private', 'Your library stays on your own computer'),
             ('Open source', 'MIT licence, built on alphaTab'),
@@ -225,9 +233,10 @@ def build():
             footage_bg(shot['chapter']).save(png)
             x, y, w, h = BOX
             run(['ffmpeg', '-y', '-loop', '1', '-framerate', str(FPS), '-t', f'{dur:.3f}', '-i', str(png),
-                 '-ss', f"{shot['t0']:.3f}", '-t', f'{src:.3f}', '-i', str(raw), '-filter_complex',
+                 '-ss', f"{shot['t0']:.3f}", '-t', f'{src:.3f}', '-i', str(shot.get('src', raw)), '-filter_complex',
                  f"[1:v]{'crop=%d:%d:%d:%d,' % (shot['crop'][2], shot['crop'][3], shot['crop'][0], shot['crop'][1]) if 'crop' in shot else ''}"
-                 f'setpts=(PTS-STARTPTS)*{k:.5f},fps={FPS},scale={w}:{h}:flags=lanczos,'
+                 f'setpts=(PTS-STARTPTS)*{k:.5f},fps={FPS},scale={w}:{h}:force_original_aspect_ratio=decrease:flags=lanczos,'
+                 f'pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=0x16181d,'
                  f'tpad=stop_mode=clone:stop_duration=10[c];[0:v][c]overlay={x}:{y},trim=duration={dur:.3f},format=yuv420p',
                  '-an', '-c:v', 'libx264', '-crf', '16', '-r', str(FPS), str(seg)])
         timeline.append(dict(shot=i, start=t, dur=dur, lead=lead, speech=speech, wav=str(wav), text=shot['say']))
