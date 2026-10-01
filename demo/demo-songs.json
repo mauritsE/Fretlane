@@ -3,18 +3,269 @@
     "file": "first-steps.atex",
     "title": "First Steps",
     "artist": "Fretlane demo",
-    "tags": ["demo", "beginner"]
+    "tags": [
+      "demo",
+      "beginner"
+    ]
   },
   {
     "file": "rotterdam-riff.atex",
     "title": "Rotterdam Riff",
     "artist": "Fretlane demo",
-    "tags": ["demo", "riff", "multi-track"]
+    "tags": [
+      "demo",
+      "riff",
+      "multi-track"
+    ]
   },
   {
     "file": "night-trail.txt",
     "title": "Night Trail (ASCII import)",
     "artist": "Fretlane demo",
-    "tags": ["demo", "ascii"]
+    "tags": [
+      "demo",
+      "ascii"
+    ]
+  },
+  {
+    "file": "greensleeves.atex",
+    "title": "Greensleeves",
+    "artist": "Traditional",
+    "tags": [
+      "songbook",
+      "beginner",
+      "folk",
+      "fingerstyle"
+    ]
+  },
+  {
+    "file": "house-of-the-rising-sun.atex",
+    "title": "House of the Rising Sun",
+    "artist": "Traditional",
+    "tags": [
+      "songbook",
+      "beginner",
+      "folk",
+      "rock",
+      "arpeggio"
+    ]
+  },
+  {
+    "file": "scarborough-fair.atex",
+    "title": "Scarborough Fair",
+    "artist": "Traditional",
+    "tags": [
+      "songbook",
+      "beginner",
+      "folk",
+      "fingerstyle"
+    ]
+  },
+  {
+    "file": "amazing-grace.atex",
+    "title": "Amazing Grace",
+    "artist": "Traditional",
+    "tags": [
+      "songbook",
+      "beginner",
+      "folk",
+      "hymn"
+    ]
+  },
+  {
+    "file": "ode-to-joy.atex",
+    "title": "Ode to Joy",
+    "artist": "Ludwig van Beethoven",
+    "tags": [
+      "songbook",
+      "beginner",
+      "classical",
+      "melody"
+    ]
+  },
+  {
+    "file": "fur-elise.atex",
+    "title": "Für Elise",
+    "artist": "Ludwig van Beethoven",
+    "tags": [
+      "songbook",
+      "intermediate",
+      "classical",
+      "fingerstyle"
+    ]
+  },
+  {
+    "file": "canon-in-d.atex",
+    "title": "Canon in D",
+    "artist": "Johann Pachelbel",
+    "tags": [
+      "songbook",
+      "beginner",
+      "classical",
+      "wedding"
+    ]
+  },
+  {
+    "file": "romanza.atex",
+    "title": "Romanza (Spanish Romance)",
+    "artist": "Anonymous",
+    "tags": [
+      "songbook",
+      "intermediate",
+      "classical",
+      "fingerstyle"
+    ]
+  },
+  {
+    "file": "minuet-in-g.atex",
+    "title": "Minuet in G",
+    "artist": "Christian Petzold",
+    "tags": [
+      "songbook",
+      "intermediate",
+      "classical",
+      "baroque"
+    ]
+  },
+  {
+    "file": "hall-of-the-mountain-king.atex",
+    "title": "In the Hall of the Mountain King",
+    "artist": "Edvard Grieg",
+    "tags": [
+      "songbook",
+      "intermediate",
+      "classical",
+      "rock",
+      "riff"
+    ]
+  },
+  {
+    "file": "when-the-saints.atex",
+    "title": "When the Saints Go Marching In",
+    "artist": "Traditional",
+    "tags": [
+      "songbook",
+      "beginner",
+      "folk",
+      "jazz"
+    ]
+  },
+  {
+    "file": "oh-susanna.atex",
+    "title": "Oh! Susanna",
+    "artist": "Stephen Foster",
+    "tags": [
+      "songbook",
+      "beginner",
+      "folk",
+      "country"
+    ]
+  },
+  {
+    "file": "drunken-sailor.atex",
+    "title": "Drunken Sailor",
+    "artist": "Traditional",
+    "tags": [
+      "songbook",
+      "beginner",
+      "folk",
+      "rock",
+      "shanty"
+    ]
+  },
+  {
+    "file": "carol-of-the-bells.atex",
+    "title": "Carol of the Bells (Shchedryk)",
+    "artist": "Mykola Leontovych",
+    "tags": [
+      "songbook",
+      "intermediate",
+      "holiday",
+      "classical"
+    ]
+  },
+  {
+    "file": "jingle-bells.atex",
+    "title": "Jingle Bells",
+    "artist": "James Lord Pierpont",
+    "tags": [
+      "songbook",
+      "beginner",
+      "holiday"
+    ]
+  },
+  {
+    "file": "moonlight-sonata.atex",
+    "title": "Moonlight Sonata",
+    "artist": "Ludwig van Beethoven",
+    "tags": [
+      "songbook",
+      "intermediate",
+      "classical",
+      "fingerstyle"
+    ]
+  },
+  {
+    "file": "happy-birthday.atex",
+    "title": "Happy Birthday",
+    "artist": "Mildred J. Hill & Patty Hill",
+    "tags": [
+      "songbook",
+      "beginner",
+      "party"
+    ]
+  },
+  {
+    "file": "twinkle-twinkle.atex",
+    "title": "Twinkle Twinkle Little Star",
+    "artist": "Traditional",
+    "tags": [
+      "songbook",
+      "beginner",
+      "kids"
+    ]
+  },
+  {
+    "file": "bourree-in-e-minor.atex",
+    "title": "Bourrée in E minor",
+    "artist": "Johann Sebastian Bach",
+    "tags": [
+      "songbook",
+      "intermediate",
+      "classical",
+      "baroque"
+    ]
+  },
+  {
+    "file": "toccata-in-d-minor.atex",
+    "title": "Toccata in D minor",
+    "artist": "Johann Sebastian Bach",
+    "tags": [
+      "songbook",
+      "intermediate",
+      "classical",
+      "rock"
+    ]
+  },
+  {
+    "file": "eine-kleine-nachtmusik.atex",
+    "title": "Eine kleine Nachtmusik",
+    "artist": "Wolfgang Amadeus Mozart",
+    "tags": [
+      "songbook",
+      "intermediate",
+      "classical"
+    ]
+  },
+  {
+    "file": "frere-jacques.atex",
+    "title": "Frère Jacques",
+    "artist": "Traditional",
+    "tags": [
+      "songbook",
+      "beginner",
+      "kids",
+      "folk"
+    ]
   }
 ]

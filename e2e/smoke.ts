@@ -72,10 +72,58 @@ await page.route('https://i.ytimg.com/**', (r) => r.fulfill({ status: 404, body:
 await page.goto(BASE);
 await page.waitForSelector('.song-card');
 const cards = await page.locator('.song-card').count();
-check(cards >= 3, `library shows ${cards} songs`);
+check(cards >= 23, `library shows ${cards} songs (demos + songbook)`);
+await page.screenshot({ path: `${SHOTS}01-library.png` });
+
+// ---------- favorites + archive ----------
+const card = (title: string) => page.locator(`.song-card[data-title="${title}"]`);
+const count = async (view: string) => Number(await page.locator(`.view-bar [data-view="${view}"] .count`).textContent());
+const favBefore = await count('favorites');
+await card('Greensleeves').locator('button.star').click();
+await page.waitForFunction((n) => Number(document.querySelector('.view-bar [data-view="favorites"] .count')?.textContent) === n + 1, favBefore);
+check((await page.locator('.song-card').first().getAttribute('data-title')) === 'Greensleeves', 'a favorite moves to the top of the library');
+await page.click('.view-bar [data-view="favorites"]');
+check((await page.locator('.song-card').count()) === favBefore + 1, 'Favorites view lists the starred song');
+await page.click('.view-bar [data-view="all"]');
+await page.screenshot({ path: `${SHOTS}01a-favorite.png` });
+await card('Greensleeves').locator('button.star').click(); // leave the library as we found it
+await page.waitForFunction((n) => Number(document.querySelector('.view-bar [data-view="favorites"] .count')?.textContent) === n, favBefore);
+
+const allBefore = await count('all');
+await card('Twinkle Twinkle Little Star').locator('button.done').click();
+await page.waitForFunction((n) => Number(document.querySelector('.view-bar [data-view="all"] .count')?.textContent) === n - 1, allBefore);
+check((await card('Twinkle Twinkle Little Star').count()) === 0, 'a song marked done leaves the library view');
+await page.click('.view-bar [data-view="archive"]');
+check((await card('Twinkle Twinkle Little Star').locator('.card-done').count()) === 1, 'the archive shows it with its done date');
+await page.screenshot({ path: `${SHOTS}01b-archive.png` });
+await card('Twinkle Twinkle Little Star').locator('button.restore').click();
+await page.waitForFunction((n) => Number(document.querySelector('.view-bar [data-view="all"] .count')?.textContent) === n, allBefore);
+check((await count('archive')) === 0, 'restoring brings it back from the archive');
+await page.click('.view-bar [data-view="all"]');
+
+// ---------- metronome ----------
+await page.keyboard.press('m');
+await page.waitForSelector('.metronome-panel');
+await page.click('.metronome-panel button.icon.big[title="Faster"]');
+const bpmShown = Number(await page.locator('.bpm-value').textContent());
+await page.click('.metronome-start');
+await page.waitForTimeout(1500);
+const metro = await page.evaluate(() => ({ running: (window as any).fretlaneMetronome.running, scheduled: (window as any).fretlaneMetronome.scheduled }));
+check(metro.running && metro.scheduled >= 2, `metronome clicks (${metro.scheduled} clicks at ${bpmShown} BPM)`);
+check((await page.locator('.beat-dots .dot.on').count()) === 1, 'metronome lights the current beat');
+await page.screenshot({ path: `${SHOTS}01c-metronome.png` });
+for (const _ of [0, 1, 2, 3]) {
+  await page.click('.metronome-panel button.tap');
+  await page.waitForTimeout(400);
+}
+const tapped = Number(await page.locator('.bpm-value').textContent());
+check(tapped >= 130 && tapped <= 170, `tap tempo at 400 ms per tap gives ${tapped} BPM (about 150)`);
+await page.click('.metronome-start');
+check(!(await page.evaluate(() => (window as any).fretlaneMetronome.running)), 'metronome stops');
+await page.keyboard.press('m');
+
 await page.fill('.search', 'rotterdam');
 check((await page.locator('.song-card').count()) === 1, 'search filters to 1 song');
-await page.screenshot({ path: `${SHOTS}01-library.png` });
 
 // ---------- synth playback ----------
 await page.locator('.song-card a.card-link').first().click();
@@ -93,6 +141,40 @@ await page.locator('.track-list li').nth(1).click();
 await waitRendered(page);
 const rendered = await page.evaluate(() => (window as any).fretlane.at.tracks.map((t: any) => t.name));
 check(rendered.join() === 'Bass', `switching tracks renders ${rendered}`);
+
+// ---------- songbook: every bundled song renders and a band arrangement plays ----------
+const all = await api<{ id: string; title: string; tags: string[] }[]>('/api/songs');
+for (const s of all.filter((x) => x.tags.includes('songbook') || x.tags.includes('demo'))) {
+  await page.goto(`${BASE}/#/song/${s.id}`);
+  await waitRendered(page);
+  const info = await page.evaluate(() => ({ bars: (window as any).fretlane.at.score?.masterBars.length ?? 0, tracks: document.querySelectorAll('.track-list li').length }));
+  check(info.bars > 0 && info.tracks > 0, `"${s.title}" renders (${info.bars} bars, ${info.tracks} tracks)`);
+  // Every track must render on its own too (drum tracks once crashed alphaTab in the Tab view).
+  for (let i = 1; i < info.tracks; i++) {
+    await page.locator('.track-list li').nth(i).click();
+    await waitRendered(page);
+  }
+}
+const workerErrors = errors.filter((e) => /unexpected error/.test(e));
+check(workerErrors.length === 0, `every track of every song renders${workerErrors.length ? `: ${workerErrors[0].slice(0, 120)}` : ''}`);
+const king = all.find((x) => x.title === 'In the Hall of the Mountain King')!;
+await page.goto(`${BASE}/#/song/${king.id}`);
+await waitRendered(page);
+check((await page.locator('.track-list li').count()) === 4, 'band arrangement has melody, rhythm, bass and drums');
+await page.click('button.play');
+await page.waitForTimeout(2000);
+check((await page.evaluate(() => (window as any).fretlane.at.timePosition as number)) > 500, 'songbook song plays');
+await page.click('button.play');
+await page.click('.topbar .star-toggle');
+await page.waitForTimeout(300);
+check((await api<{ favorite: boolean }>(`/api/songs/${king.id}`)).favorite, 'the player can star a song');
+await page.keyboard.press('m');
+await page.waitForSelector('.metronome-panel .song-tempo button');
+await page.click('.metronome-panel .song-tempo button');
+check((await page.locator('.bpm-value').textContent()) === '100', 'metronome takes the song tempo');
+await page.screenshot({ path: `${SHOTS}02b-songbook-metronome.png` });
+await page.keyboard.press('m');
+await page.click('.topbar .star-toggle');
 
 // ---------- add a song with a (fake) YouTube video + pasted ASCII tab ----------
 const song = await api<{ id: string; tabFormat: string }>('/api/songs', {

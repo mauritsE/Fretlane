@@ -1,0 +1,27 @@
+\title "Romanza (Spanish Romance)"
+\subtitle "Spanish guitar piece, 19th century (first part)"
+\artist "Anonymous"
+\music "Anonymous"
+\tab "Fretlane songbook arrangement (public domain melody)"
+\tempo 76
+
+\track "Melody"
+\staff {tabs}
+\tuning (e4 b3 g3 d3 a2 e2)
+\instrument acousticguitarnylon
+\ts (3 4) \ks eminor :8 (7.1 0.6){tu 3} 0.2{tu 3} 0.3{tu 3} 7.1{tu 3} 0.2{tu 3} 0.3{tu 3} 7.1{tu 3} 0.2{tu 3} 0.3{tu 3} |
+:8 (7.1 0.6){tu 3} 0.2{tu 3} 0.3{tu 3} 5.1{tu 3} 0.2{tu 3} 0.3{tu 3} 3.1{tu 3} 0.2{tu 3} 0.3{tu 3} |
+:8 (3.1 0.6){tu 3} 0.2{tu 3} 0.3{tu 3} 2.1{tu 3} 0.2{tu 3} 0.3{tu 3} 0.1{tu 3} 0.2{tu 3} 0.3{tu 3} |
+:8 (0.1 0.6){tu 3} 0.2{tu 3} 0.3{tu 3} 3.1{tu 3} 0.2{tu 3} 0.3{tu 3} 7.1{tu 3} 0.2{tu 3} 0.3{tu 3} |
+:8 (12.1 0.5){tu 3} 13.2{tu 3} 14.3{tu 3} 12.1{tu 3} 13.2{tu 3} 14.3{tu 3} 12.1{tu 3} 13.2{tu 3} 14.3{tu 3} |
+:8 (12.1 0.5){tu 3} 10.2{tu 3} 9.3{tu 3} 10.1{tu 3} 10.2{tu 3} 9.3{tu 3} 8.1{tu 3} 10.2{tu 3} 9.3{tu 3} |
+:8 (8.1 0.5){tu 3} 5.2{tu 3} 5.3{tu 3} 7.1{tu 3} 5.2{tu 3} 5.3{tu 3} 5.1{tu 3} 5.2{tu 3} 5.3{tu 3} |
+:8 (5.1 0.5){tu 3} 5.2{tu 3} 5.3{tu 3} 7.1{tu 3} 5.2{tu 3} 5.3{tu 3} 8.1{tu 3} 5.2{tu 3} 5.3{tu 3} |
+:8 (7.1 2.5){tu 3} 7.2{tu 3} 8.3{tu 3} 8.1{tu 3} 7.2{tu 3} 8.3{tu 3} 7.1{tu 3} 7.2{tu 3} 8.3{tu 3} |
+:8 (11.1 2.5){tu 3} 7.2{tu 3} 8.3{tu 3} 8.1{tu 3} 7.2{tu 3} 8.3{tu 3} 7.1{tu 3} 7.2{tu 3} 8.3{tu 3} |
+:8 (7.1 0.6){tu 3} 0.2{tu 3} 0.3{tu 3} 5.1{tu 3} 0.2{tu 3} 0.3{tu 3} 3.1{tu 3} 0.2{tu 3} 0.3{tu 3} |
+:8 (3.1 0.6){tu 3} 0.2{tu 3} 0.3{tu 3} 2.1{tu 3} 0.2{tu 3} 0.3{tu 3} 0.1{tu 3} 0.2{tu 3} 0.3{tu 3} |
+:8 (2.1 2.5){tu 3} 0.2{tu 3} 2.3{tu 3} 2.1{tu 3} 0.2{tu 3} 2.3{tu 3} 2.1{tu 3} 0.2{tu 3} 2.3{tu 3} |
+:8 (2.1 2.5){tu 3} 0.2{tu 3} 2.3{tu 3} 3.1{tu 3} 0.2{tu 3} 2.3{tu 3} 2.1{tu 3} 0.2{tu 3} 2.3{tu 3} |
+:8 (0.1 0.6){tu 3} 0.2{tu 3} 0.3{tu 3} 0.1{tu 3} 0.2{tu 3} 0.3{tu 3} 0.1{tu 3} 0.2{tu 3} 0.3{tu 3} |
+:2 (0.1 0.2 0.3 2.4 2.5 0.6){d}

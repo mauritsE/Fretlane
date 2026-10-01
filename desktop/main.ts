@@ -34,6 +34,8 @@ function libraryDir(): string {
   if (fromEnv) return path.resolve(fromEnv);
   const home = app.getPath('home');
   const dir = path.join(home, APP_NAME);
+  // Mac App Store build: "home" is the app's sandbox container, and there is no old library to find.
+  if (process.mas) return dir;
   const legacy = path.join(home, LEGACY_NAME);
   if (!existsSync(dir) && existsSync(path.join(legacy, 'songs.json'))) {
     try {

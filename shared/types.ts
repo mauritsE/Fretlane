@@ -27,6 +27,10 @@ export interface Song {
   /** Track the player opens by default. */
   defaultTrack: number;
   tags: string[];
+  /** Starred by the user; favorites are listed first and have their own filter. */
+  favorite: boolean;
+  /** When the user marked the song as done and moved it to the archive; null while active. */
+  archivedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -42,6 +46,8 @@ export interface NewSongInput {
   tabFile?: { name: string; dataBase64: string };
 }
 
-export type SongPatch = Partial<Pick<Song, 'title' | 'artist' | 'youtubeId' | 'syncPoints' | 'defaultTrack' | 'tags'>> & {
+export type SongPatch = Partial<Pick<Song, 'title' | 'artist' | 'youtubeId' | 'syncPoints' | 'defaultTrack' | 'tags' | 'favorite'>> & {
   youtube?: string;
+  /** true moves the song to the archive (marks it done), false restores it. */
+  archived?: boolean;
 };

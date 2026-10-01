@@ -1,0 +1,111 @@
+name: Mac App Store
+
+# Builds Fretlane for the Mac App Store.
+# - "sandbox" always runs: it builds the App Store flavour of the app without Apple certificates,
+#   signs it ad-hoc with the App Store entitlements and launches it inside the App Sandbox. This
+#   proves the app works under the store's rules before anyone pays for a developer account.
+# - "store" builds the signed installer (.pkg) and, when asked, uploads it to App Store Connect.
+#   It needs the secrets described in appstore/SUBMITTING.md and is skipped until they exist.
+on:
+  workflow_dispatch:
+    inputs:
+      upload:
+        description: 'Upload the signed build to App Store Connect'
+        type: boolean
+        default: false
+  pull_request:
+    paths:
+      - 'desktop/**'
+      - 'build/entitlements.mas*'
+      - 'release/**'
+      - '.github/workflows/app-store.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  sandbox:
+    runs-on: macos-latest
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build && npm run build:desktop && node scripts/collect-licenses.mjs
+      - name: Build the App Store flavour, unsigned
+        run: npx electron-builder --mac mas --arm64 --publish never -c.mas.identity=null -c.mas.provisioningProfile=null
+      - name: Sign ad-hoc with the App Store entitlements
+        run: release/mas-adhoc-sign.sh release/out/mas-arm64/Fretlane.app
+      - name: Launch it inside the App Sandbox
+        run: node release/smoke.mjs release/out/mas-arm64/Fretlane.app/Contents/MacOS/Fretlane --sandboxed --timeout 120
+      - name: Show the sandbox container
+        if: always()
+        run: ls -la ~/Library/Containers/app.fretlane/Data/Fretlane 2>/dev/null | head -20 || echo "no container"
+
+  store:
+    runs-on: macos-latest
+    needs: sandbox
+    if: github.event_name == 'workflow_dispatch'
+    env:
+      HAS_SECRETS: ${{ secrets.MAS_CERTIFICATES_P12 != '' }}
+    steps:
+      - name: Check the App Store secrets
+        run: |
+          if [ "$HAS_SECRETS" != "true" ]; then
+            echo "::warning::App Store secrets are not set up yet, so there is nothing to sign. See appstore/SUBMITTING.md."
+          fi
+      - uses: actions/checkout@v4
+        if: env.HAS_SECRETS == 'true'
+      - uses: actions/setup-node@v4
+        if: env.HAS_SECRETS == 'true'
+        with:
+          node-version: 22
+          cache: npm
+      - if: env.HAS_SECRETS == 'true'
+        run: npm ci
+      - if: env.HAS_SECRETS == 'true'
+        run: npm run build && npm run build:desktop && node scripts/collect-licenses.mjs
+      - name: Provisioning profile
+        if: env.HAS_SECRETS == 'true'
+        run: echo "${{ secrets.MAS_PROVISIONING_PROFILE }}" | base64 --decode > build/embedded.provisionprofile
+      - name: Build and sign the installer
+        if: env.HAS_SECRETS == 'true'
+        env:
+          # One .p12 holding both the "Apple Distribution" and "Mac Installer Distribution" certificates.
+          CSC_LINK: ${{ secrets.MAS_CERTIFICATES_P12 }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAS_CERTIFICATES_PASSWORD }}
+          SIGNING_NAME: ${{ secrets.MAS_SIGNING_NAME }}
+        # @electron/osx-sign writes ElectronTeamID (from the provisioning profile) into Info.plist and
+        # adds the "<TEAMID>.app.fretlane" app group, under which the sandboxed app registers its
+        # Mach services. Every upload needs a higher build number; the run number always grows.
+        run: >
+          npx electron-builder --mac mas --universal --publish never
+          -c.mas.identity="$SIGNING_NAME"
+          -c.buildVersion=${{ github.run_number }}
+      - name: Verify the installer signature
+        if: env.HAS_SECRETS == 'true'
+        run: |
+          set -euo pipefail
+          pkg=$(ls release/out/mas-universal/*.pkg)
+          pkgutil --check-signature "$pkg"
+          echo "PKG=$pkg" >> "$GITHUB_ENV"
+      - uses: actions/upload-artifact@v4
+        if: env.HAS_SECRETS == 'true'
+        with:
+          name: app-store-pkg
+          path: release/out/mas-universal/*.pkg
+      - name: Upload to App Store Connect
+        if: env.HAS_SECRETS == 'true' && inputs.upload
+        env:
+          API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          API_ISSUER: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.appstoreconnect/private_keys
+          echo "${{ secrets.APP_STORE_CONNECT_KEY_P8 }}" | base64 --decode > ~/.appstoreconnect/private_keys/AuthKey_${API_KEY_ID}.p8
+          xcrun altool --validate-app -f "$PKG" -t macos --apiKey "$API_KEY_ID" --apiIssuer "$API_ISSUER"
+          xcrun altool --upload-app -f "$PKG" -t macos --apiKey "$API_KEY_ID" --apiIssuer "$API_ISSUER"
