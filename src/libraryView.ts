@@ -213,6 +213,7 @@ export function openSongDialog(song: Song | null, onSaved: (s: Song) => void | P
     rows: 10,
     placeholder: 'Paste a plain-text tab (e|---0---3---|…) or alphaTex here',
     spellcheck: false,
+    wrap: 'off', // tab lines only line up when they don't wrap
   });
   const panes = { file: fileInput, url: urlInput, text: textInput };
   const paneHost = h('div.source-pane', {}, fileInput);
