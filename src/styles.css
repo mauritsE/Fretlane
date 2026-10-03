@@ -267,6 +267,8 @@ body[data-view='player'] { overflow: hidden; }
   border-top: 1px solid var(--line);
   overflow-x: auto;
 }
+/* Narrow windows scroll the bar sideways instead of squeezing buttons until their labels wrap. */
+.controls > * { flex-shrink: 0; white-space: nowrap; }
 .controls .play {
   width: 40px; height: 40px; border-radius: 50%;
   background: var(--accent); color: var(--accent-ink); border: none; font-size: 16px;
