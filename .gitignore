@@ -15,3 +15,4 @@ release/licenses/
 build/embedded.provisionprofile
 marketing/out/
 marketing/work/
+__pycache__/
