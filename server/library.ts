@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { NewSongInput, Song, SongPatch, TabFormat } from '../shared/types.ts';
-import { detectTabFormat, parseYouTubeId, slugify } from '../shared/util.ts';
+import { detectTabFormat, parseMediaLink, parseYouTubeId, slugify } from '../shared/util.ts';
 import { asciiTabToAlphaTex } from '../shared/asciiTab.ts';
 import { normalizeSyncPoints } from '../shared/sync.ts';
 import { fetchTab } from './fetchTab.ts';
@@ -134,7 +134,7 @@ export class Library {
       id,
       title,
       artist,
-      youtubeId: parseYouTubeId(input.youtube),
+      ...(input.media !== undefined ? parseMediaLink(input.media) : { youtubeId: parseYouTubeId(input.youtube), spotifyId: '' }),
       tabFile,
       tabFormat: format,
       tabSource: input.tabUrl ?? input.tabFile?.name ?? 'pasted text',
@@ -156,8 +156,12 @@ export class Library {
     if (!song) throw new HttpError(404, 'Song not found');
     if (patch.title !== undefined) song.title = String(patch.title).trim() || song.title;
     if (patch.artist !== undefined) song.artist = String(patch.artist).trim() || song.artist;
-    if (patch.youtube !== undefined) song.youtubeId = parseYouTubeId(patch.youtube);
-    if (patch.youtubeId !== undefined) song.youtubeId = parseYouTubeId(patch.youtubeId);
+    const youtube = patch.youtube ?? patch.youtubeId;
+    if (patch.media !== undefined) Object.assign(song, parseMediaLink(patch.media));
+    else if (youtube !== undefined) {
+      song.youtubeId = parseYouTubeId(youtube);
+      if (song.youtubeId) song.spotifyId = '';
+    }
     if (patch.defaultTrack !== undefined) song.defaultTrack = Math.max(0, Math.floor(Number(patch.defaultTrack)) || 0);
     if (patch.tags !== undefined) song.tags = patch.tags.map(String);
     if (patch.favorite !== undefined) song.favorite = patch.favorite === true;
@@ -196,7 +200,7 @@ export class Library {
 
 /** Songs saved by older versions lack the newer fields. */
 function withDefaults(song: Song): Song {
-  return { ...song, favorite: song.favorite === true, archivedAt: song.archivedAt ?? null };
+  return { ...song, spotifyId: song.spotifyId ?? '', favorite: song.favorite === true, archivedAt: song.archivedAt ?? null };
 }
 
 type DemoEntry = Omit<NewSongInput, 'tabFile'> & { file: string; syncPoints?: Song['syncPoints'] };

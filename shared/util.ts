@@ -21,6 +21,46 @@ export function parseYouTubeId(input: string | undefined | null): string {
   return '';
 }
 
+/**
+ * Accepts a Spotify track link (open.spotify.com/track/…, with or without a locale segment such as
+ * /intl-nl/, or the /embed/ form), a `spotify:track:…` URI, or a bare 22-character track id.
+ */
+export function parseSpotifyTrackId(input: string | undefined | null): string {
+  if (!input) return '';
+  const s = input.trim();
+  if (/^[A-Za-z0-9]{22}$/.test(s)) return s;
+  const uri = s.match(/^spotify:track:([A-Za-z0-9]{22})$/);
+  if (uri) return uri[1];
+  try {
+    const url = new URL(s);
+    if (url.hostname !== 'open.spotify.com' && url.hostname !== 'play.spotify.com') return '';
+    const m = url.pathname.match(/^(?:\/intl-[a-z-]+)?(?:\/embed)?\/track\/([A-Za-z0-9]{22})(?:\/|$)/i);
+    if (m) return m[1];
+  } catch {
+    /* not a URL */
+  }
+  return '';
+}
+
+/** The recording a song plays along with. A song has at most one: sync pins belong to one recording. */
+export interface MediaLink {
+  youtubeId: string;
+  spotifyId: string;
+}
+
+/** Parses a YouTube or Spotify link. Anything unrecognized (including empty input) gives no recording. */
+export function parseMediaLink(input: string | undefined | null): MediaLink {
+  const youtubeId = parseYouTubeId(input);
+  return { youtubeId, spotifyId: youtubeId ? '' : parseSpotifyTrackId(input) };
+}
+
+/** A link the user can paste back into the song dialog. */
+export function mediaLinkUrl(song: MediaLink): string {
+  if (song.youtubeId) return `https://www.youtube.com/watch?v=${song.youtubeId}`;
+  if (song.spotifyId) return `https://open.spotify.com/track/${song.spotifyId}`;
+  return '';
+}
+
 function clean(id: string): string {
   const m = id.match(/^[A-Za-z0-9_-]{11}/);
   return m ? m[0] : '';

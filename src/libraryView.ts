@@ -1,5 +1,5 @@
 import type { NewSongInput, Song } from '../shared/types.ts';
-import { parseYouTubeId } from '../shared/util.ts';
+import { mediaLinkUrl, parseMediaLink } from '../shared/util.ts';
 import { api, fileToBase64 } from './api.ts';
 import { APP_NAME } from '../shared/brand.ts';
 import { h, toast } from './dom.ts';
@@ -151,7 +151,11 @@ export async function renderLibrary(root: HTMLElement): Promise<void> {
         'div.card-meta',
         {},
         level ? h('span.badge.level', { 'data-level': level }, level) : h('span.badge', { title: s.tabSource }, s.tabFormat.toUpperCase()),
-        s.youtubeId ? h('span.badge.yt', { title: 'Plays along with YouTube' }, '▶ YouTube') : h('span.badge', { title: 'Uses the built-in synthesizer' }, 'Synth'),
+        s.youtubeId
+          ? h('span.badge.yt', { title: 'Plays along with YouTube' }, '▶ YouTube')
+          : s.spotifyId
+            ? h('span.badge.sp', { title: 'Plays along with Spotify' }, '♫ Spotify')
+            : h('span.badge', { title: 'Uses the built-in synthesizer' }, 'Synth'),
         s.syncPoints.length ? h('span.badge.synced', {}, `${s.syncPoints.length} sync`) : null,
         h('span.spacer'),
         archived
@@ -192,18 +196,25 @@ export function openSongDialog(song: Song | null, onSaved: (s: Song) => void | P
   const editing = !!song;
   const title = h('input', { name: 'title', placeholder: editing ? '' : 'Leave empty to use the tab title / file name', value: song?.title ?? '' });
   const artist = h('input', { name: 'artist', value: song?.artist ?? '' });
-  const youtube = h('input', {
-    name: 'youtube',
-    placeholder: 'https://www.youtube.com/watch?v=…',
-    value: song?.youtubeId ? `https://www.youtube.com/watch?v=${song.youtubeId}` : '',
+  const recording = h('input', {
+    name: 'media',
+    placeholder: 'https://www.youtube.com/watch?v=…  or  https://open.spotify.com/track/…',
+    value: song ? mediaLinkUrl(song) : '',
   });
-  const ytHint = h('small.hint');
-  const checkYt = () => {
-    const v = youtube.value.trim();
-    ytHint.textContent = !v ? 'Optional. Without a video the tab plays with the built-in synthesizer.' : parseYouTubeId(v) ? `✓ Video id ${parseYouTubeId(v)}` : '⚠ Not a recognizable YouTube link';
+  const recordingHint = h('small.hint');
+  const checkRecording = () => {
+    const v = recording.value.trim();
+    const { youtubeId, spotifyId } = parseMediaLink(v);
+    recordingHint.textContent = !v
+      ? 'Optional: a YouTube video or a Spotify track. Without one the tab plays with the built-in synthesizer.'
+      : youtubeId
+        ? `✓ YouTube video ${youtubeId}`
+        : spotifyId
+          ? `✓ Spotify track ${spotifyId}. Spotify can't slow down; log in to Spotify for full tracks instead of 30-second previews.`
+          : '⚠ Not a recognizable YouTube video or Spotify track link';
   };
-  youtube.addEventListener('input', checkYt);
-  checkYt();
+  recording.addEventListener('input', checkRecording);
+  checkRecording();
   const tags = h('input', { name: 'tags', placeholder: 'rock, practice, drop-d', value: song?.tags.join(', ') ?? '' });
 
   let source: 'file' | 'url' | 'text' = 'file';
@@ -252,9 +263,9 @@ export function openSongDialog(song: Song | null, onSaved: (s: Song) => void | P
           const tagList = tags.value.split(',').map((t) => t.trim().toLowerCase()).filter(Boolean);
           let saved: Song;
           if (song) {
-            saved = await api.updateSong(song.id, { title: title.value, artist: artist.value, youtube: youtube.value, tags: tagList });
+            saved = await api.updateSong(song.id, { title: title.value, artist: artist.value, media: recording.value, tags: tagList });
           } else {
-            const input: NewSongInput = { title: title.value, artist: artist.value, youtube: youtube.value, tags: tagList };
+            const input: NewSongInput = { title: title.value, artist: artist.value, media: recording.value, tags: tagList };
             if (source === 'file') {
               const f = fileInput.files?.[0];
               if (!f) throw new Error('Choose a tab file first.');
@@ -283,7 +294,7 @@ export function openSongDialog(song: Song | null, onSaved: (s: Song) => void | P
     editing ? null : h('fieldset', {}, h('legend', {}, 'Tab'), tabs, paneHost, h('small.hint', {}, 'Guitar Pro 3–8 (.gp, .gp5, .gpx…), MusicXML, alphaTex, or plain-text tabs.')),
     h('label', {}, 'Title', title),
     h('label', {}, 'Artist', artist),
-    h('label', {}, 'YouTube video', youtube, ytHint),
+    h('label', {}, 'Recording (YouTube or Spotify)', recording, recordingHint),
     h('label', {}, 'Tags (comma separated)', tags),
     status,
     h('div.dialog-actions', {}, h('button', { type: 'button', onclick: () => dialog.close() }, 'Cancel'), submit),

@@ -1,9 +1,10 @@
 # Fretlane 🎸
 
-An open-source, local-first tab player in the spirit of Songsterr. Load a tab from anywhere, link a YouTube video, and play along. The tab cursor follows the recording.
+An open-source, local-first tab player in the spirit of Songsterr. Load a tab from anywhere, link a YouTube video or Spotify track, and play along. The tab cursor follows the recording.
 
 - **Tabs from anywhere:** Guitar Pro 3–8 (`.gp3/.gp4/.gp5/.gpx/.gp`), MusicXML (`.xml/.musicxml/.mxl`), [alphaTex](https://alphatab.net/docs/alphatex/introduction), and plain-text ASCII tabs. You can upload a file, give a URL (the local server downloads it, so there are no CORS problems), or paste text.
 - **Plays along with YouTube:** the video is the clock. Play, pause, seek, speed and looping on either the tab or the video stay in sync.
+- **…or with Spotify:** paste a Spotify track link instead. Play, pause, seek, looping and sync pins work the same way. Spotify's embed can't change speed, so Spotify songs play at 100%. You need to be logged in to Spotify in the browser to hear full tracks; otherwise Spotify plays a 30-second preview. In the desktop app expect previews only (untested: Electron lacks the DRM module Spotify uses for full tracks, and its login popup opens in your normal browser). Apple Music isn't supported: controlling it needs a paid Apple developer token.
 - **Sync editor:** pin bars to moments in the video. One pin sets the start. More pins let the tab follow tempo drift in a live recording. You can also press **T** on every downbeat to tap the song in.
 - **22 songs out of the box:** a songbook of well-known public-domain tunes (Greensleeves, House of the Rising Sun, Für Elise, Canon in D, Romanza, In the Hall of the Mountain King, Drunken Sailor…), arranged for melody guitar, rhythm guitar, bass and drums, marked beginner or intermediate.
 - **Library:** search, tags, ★ favorites (listed first, with their own view) and an **archive** for songs you've learned (✓ Mark as done, ↺ to restore). Everything is stored as plain files in `library/`.
@@ -45,12 +46,13 @@ On first start the library is seeded with three small **original** demo tabs and
 
 ## Adding songs
 
-**In the app:** click **+ Add song**, choose *Upload file*, *From URL* or *Paste text*, and optionally paste a YouTube link.
+**In the app:** click **+ Add song**, choose *Upload file*, *From URL* or *Paste text*, and optionally paste a YouTube or Spotify track link.
 
 **From the command line** (while the app is running):
 
 ```bash
 npm run add-song -- ~/Tabs/my-song.gp5 --youtube https://youtu.be/XXXXXXXXXXX --tags rock,practice
+npm run add-song -- ~/Tabs/my-song.gp5 --spotify https://open.spotify.com/track/XXXXXXXXXXXXXXXXXXXXXX
 npm run add-song -- https://example.com/some-tab.gp --title "Song" --artist "Band"
 ```
 
@@ -87,7 +89,7 @@ Back up or sync your library by copying the `library/` folder.
 ```bash
 npm run typecheck
 npm test                 # unit + integration tests (vitest)
-npm run e2e              # browser smoke test against a running dev server (Playwright, fake YouTube)
+npm run e2e              # browser smoke test against a running dev server (Playwright, fake YouTube and Spotify)
 npm run validate-tab -- demo/*.atex some.gp5   # parse tabs with alphaTab in Node and print a summary
 ```
 
@@ -115,14 +117,14 @@ Project layout:
 
 ```
 server/    Node HTTP server: library storage (JSON + files), tab download, static hosting
-shared/    Pure TS used by both sides: types, YouTube URL parsing, format detection, ASCII→alphaTex, sync maths,
+shared/    Pure TS used by both sides: types, YouTube/Spotify link parsing, format detection, ASCII→alphaTex, sync maths,
            metronome timing, and the songbook generator (guitar fingering, chord shapes, band parts)
-src/       Browser app (vanilla TS + Vite): library view, player view, YouTube bridge
+src/       Browser app (vanilla TS + Vite): library view, player view, YouTube/Spotify bridge
 demo/      Tabs seeded into the library: original demos + the generated songbook
 songbook/  The songbook as data (note names + chord symbols); npm run build-songbook writes demo/*.atex
 appstore/  Mac App Store listing, privacy policy, screenshots and submission guide
 tests/     vitest suites
-e2e/       Playwright smoke test (replaces YouTube with a fake player so it runs offline)
+e2e/       Playwright smoke test (replaces YouTube and Spotify with fake players so it runs offline)
 scripts/   CLI helpers (add-song, validate-tab)
 desktop/   Electron main process (the desktop app)
 build/     App icon (icon.svg → icon.png via npm run render-icon)
