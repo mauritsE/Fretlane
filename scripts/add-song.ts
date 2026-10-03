@@ -1,8 +1,9 @@
 /**
  * Add a song to a running Fretlane (npm run dev / npm start) from the command line.
  *
- *   npm run add-song -- <tab file or URL> [--title "..."] [--artist "..."] [--youtube <url>] [--tags a,b]
+ *   npm run add-song -- <tab file or URL> [--title "..."] [--artist "..."] [--youtube <url> | --spotify <url>] [--tags a,b]
  *   npm run add-song -- ./tabs/my-song.gp5 --youtube https://youtu.be/XXXXXXXXXXX --tags rock
+ *   npm run add-song -- ./tabs/my-song.gp5 --spotify https://open.spotify.com/track/XXXXXXXXXXXXXXXXXXXXXX
  *
  * Env: FRETLANE_URL (default http://localhost:5173)
  */
@@ -25,11 +26,12 @@ const input: NewSongInput = {
   title: opt('title'),
   artist: opt('artist'),
   youtube: opt('youtube'),
+  media: opt('spotify'),
   tags: opt('tags')?.split(',').map((t) => t.trim()).filter(Boolean),
 };
 const source = args[0];
 if (!source) {
-  console.error('Usage: npm run add-song -- <tab file or URL> [--title T] [--artist A] [--youtube URL] [--tags a,b]');
+  console.error('Usage: npm run add-song -- <tab file or URL> [--title T] [--artist A] [--youtube URL | --spotify URL] [--tags a,b]');
   process.exit(1);
 }
 if (/^https?:\/\//.test(source)) input.tabUrl = source;
@@ -43,7 +45,7 @@ try {
   const res = await fetch(`${BASE}/api/songs`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input) });
   const body = (await res.json()) as Song & { error?: string };
   if (!res.ok) throw new Error(body.error ?? res.statusText);
-  console.log(`Added "${body.title}" by ${body.artist} [${body.tabFormat}]${body.youtubeId ? ` with video ${body.youtubeId}` : ''}`);
+  console.log(`Added "${body.title}" by ${body.artist} [${body.tabFormat}]${body.youtubeId ? ` with video ${body.youtubeId}` : body.spotifyId ? ` with Spotify track ${body.spotifyId}` : ''}`);
   console.log(`Open: ${BASE}/#/song/${encodeURIComponent(body.id)}`);
 } catch (err) {
   const msg = (err as Error).message;

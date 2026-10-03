@@ -98,6 +98,19 @@ describe('Library', () => {
     expect((await lib.update(b.id, { favorite: 'yes' as unknown as boolean })).favorite).toBe(false);
   });
 
+  it('a song plays along with a YouTube video or a Spotify track, not both', async () => {
+    const lib = await fresh(false);
+    const SP = '4uLU6hMCjMI75M1A2tKUQC';
+    const song = await lib.add({ title: 'T', artist: 'A', tabText: ASCII, media: `https://open.spotify.com/intl-nl/track/${SP}?si=1` });
+    expect(song).toMatchObject({ youtubeId: '', spotifyId: SP });
+    expect(await lib.update(song.id, { media: 'https://youtu.be/dQw4w9WgXcQ' })).toMatchObject({ youtubeId: 'dQw4w9WgXcQ', spotifyId: '' });
+    expect(await lib.update(song.id, { media: `spotify:track:${SP}` })).toMatchObject({ youtubeId: '', spotifyId: SP });
+    // the older `youtube` field still works and replaces the Spotify track
+    expect(await lib.update(song.id, { youtube: 'https://youtu.be/dQw4w9WgXcQ' })).toMatchObject({ youtubeId: 'dQw4w9WgXcQ', spotifyId: '' });
+    expect(await lib.update(song.id, { media: '' })).toMatchObject({ youtubeId: '', spotifyId: '' });
+    expect((await lib.add({ title: 'Y', tabText: ASCII, youtube: 'https://youtu.be/dQw4w9WgXcQ' })).spotifyId).toBe('');
+  });
+
   it('add() converts pasted ASCII tab to alphatex', async () => {
     const lib = await fresh(false);
     const song = await lib.add({ title: 'My Riff', artist: 'Me', tabText: ASCII, youtube: 'https://youtu.be/dQw4w9WgXcQ?t=5', tags: ['x'] });

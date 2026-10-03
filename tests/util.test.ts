@@ -1,8 +1,54 @@
 import { describe, expect, it } from 'vitest';
-import { detectTabFormat, looksLikeAsciiTab, parseYouTubeId, slugify } from '../shared/util.ts';
+import { detectTabFormat, looksLikeAsciiTab, mediaLinkUrl, parseMediaLink, parseSpotifyTrackId, parseYouTubeId, slugify } from '../shared/util.ts';
 
 const ID = 'dQw4w9WgXcQ';
 const enc = (s: string) => new TextEncoder().encode(s);
+
+const SP = '4uLU6hMCjMI75M1A2tKUQC';
+
+describe('parseSpotifyTrackId', () => {
+  it.each([
+    [SP, SP],
+    [`spotify:track:${SP}`, SP],
+    [`https://open.spotify.com/track/${SP}`, SP],
+    [`https://open.spotify.com/track/${SP}?si=abc123`, SP],
+    [`https://open.spotify.com/intl-nl/track/${SP}`, SP],
+    [`https://open.spotify.com/intl-pt-br/track/${SP}?si=x`, SP],
+    [`https://open.spotify.com/embed/track/${SP}?utm_source=generator`, SP],
+    [`  https://open.spotify.com/track/${SP}  `, SP],
+  ])('%s', (input, expected) => {
+    expect(parseSpotifyTrackId(input)).toBe(expected);
+  });
+
+  it.each([
+    [''],
+    ['not a link'],
+    [`https://open.spotify.com/album/${SP}`],
+    [`https://open.spotify.com/playlist/${SP}`],
+    [`https://example.com/track/${SP}`],
+    [`spotify:album:${SP}`],
+    ['https://open.spotify.com/track/short'],
+    [ID],
+  ])('rejects %s', (input) => {
+    expect(parseSpotifyTrackId(input)).toBe('');
+  });
+});
+
+describe('parseMediaLink', () => {
+  it('recognizes YouTube and Spotify links, never both', () => {
+    expect(parseMediaLink(`https://youtu.be/${ID}`)).toEqual({ youtubeId: ID, spotifyId: '' });
+    expect(parseMediaLink(`https://open.spotify.com/track/${SP}`)).toEqual({ youtubeId: '', spotifyId: SP });
+    expect(parseMediaLink('')).toEqual({ youtubeId: '', spotifyId: '' });
+    expect(parseMediaLink('https://music.apple.com/nl/album/x/123?i=456')).toEqual({ youtubeId: '', spotifyId: '' });
+  });
+
+  it('round-trips through mediaLinkUrl', () => {
+    for (const link of [{ youtubeId: ID, spotifyId: '' }, { youtubeId: '', spotifyId: SP }]) {
+      expect(parseMediaLink(mediaLinkUrl(link))).toEqual(link);
+    }
+    expect(mediaLinkUrl({ youtubeId: '', spotifyId: '' })).toBe('');
+  });
+});
 
 describe('parseYouTubeId', () => {
   it.each([
