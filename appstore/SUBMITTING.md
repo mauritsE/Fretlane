@@ -14,8 +14,8 @@ The repository already contains everything that can be prepared without an Apple
 | Privacy policy (linked from the listing) | `appstore/PRIVACY.md` |
 | Screenshots, 2880×1800 | `appstore/screenshots/` |
 
-What only you can do: pay Apple, create the certificates, press "Submit". Roughly an hour of
-clicking plus Apple's review (typically 1–3 days).
+What only you can do: pay Apple, create the certificates, sort out the paid-app paperwork
+(step 6), press "Submit". Roughly an hour of clicking plus Apple's review (typically 1–3 days).
 
 ## 1. Join the Apple Developer Program (once, €99/year)
 
@@ -55,12 +55,37 @@ Apple Distribution certificate → name it `Fretlane App Store` → download `�
 name **Fretlane** (if taken, e.g. "Fretlane Tab Player"), bundle ID `app.fretlane`, SKU `fretlane`.
 Fill in the fields from `appstore/LISTING.md` and upload the screenshots.
 
-## 6. Create an App Store Connect API key (for the upload)
+## 6. Set up the paid app (price, agreement, tax, bank, trader status)
+
+The App Store version costs **€4.99** (one-time, no in-app purchases). The source code and the
+GitHub downloads stay free; store buyers pay for a signed app that installs and updates in one
+click, without the "can't verify the developer" warning the GitHub build shows.
+
+1. **Paid Apps agreement.** App Store Connect → *Business* → accept the **Paid Apps** agreement.
+   Apple won't let you set a price until it's active.
+2. **Tax and banking.** On the same page, add your bank account (IBAN) and fill in the tax forms.
+   As a Dutch resident you fill in the US *W-8BEN* form (it confirms you're not a US taxpayer, so no
+   US tax is withheld). Apple collects and pays the EU VAT on each sale; the income itself goes on
+   your Dutch tax return.
+3. **Small Business Program.** Apply at
+   <https://developer.apple.com/app-store/small-business-program/>. It lowers Apple's commission
+   from 30% to 15%. It isn't automatic. At €4.99 that leaves roughly €3.50 per sale after VAT and
+   commission.
+4. **Trader status (EU Digital Services Act).** App Store Connect asks whether you are a trader.
+   Selling a paid app means yes. Apple then shows your **address, phone number and email** on the
+   product page in the EU. As an individual that's your home address unless you use a business
+   address (e.g. a KvK-registered *eenmanszaak* with a separate address). Decide this before you
+   submit.
+5. **Price.** The app → *Pricing and Availability* → base country **Netherlands**, price **€4.99**.
+   Apple fills in the other countries. Raising the price later is easy; lowering it after people
+   paid more annoys early buyers, so start low.
+
+## 7. Create an App Store Connect API key (for the upload)
 
 Users and Access → Integrations → App Store Connect API → **+**, access *App Manager*. Note the
 **Key ID** and **Issuer ID**, and download the `.p8` file (only possible once).
 
-## 7. Add the GitHub secrets
+## 8. Add the GitHub secrets
 
 GitHub → repository → Settings → Secrets and variables → Actions → *New repository secret*.
 Base64-encode files first, on a Mac: `base64 -i file | pbcopy`, then paste.
@@ -71,11 +96,11 @@ Base64-encode files first, on a Mac: `base64 -i file | pbcopy`, then paste.
 | `MAS_CERTIFICATES_PASSWORD` | the password you chose in step 3 |
 | `MAS_SIGNING_NAME` | your name and team ID exactly as in the certificate, e.g. `Maurits Elzinga (AB12CD34EF)` (Keychain shows it as "Apple Distribution: Maurits Elzinga (AB12CD34EF)") |
 | `MAS_PROVISIONING_PROFILE` | base64 of the `.provisionprofile` from step 4 |
-| `APP_STORE_CONNECT_KEY_ID` | Key ID from step 6 |
-| `APP_STORE_CONNECT_ISSUER_ID` | Issuer ID from step 6 |
+| `APP_STORE_CONNECT_KEY_ID` | Key ID from step 7 |
+| `APP_STORE_CONNECT_ISSUER_ID` | Issuer ID from step 7 |
 | `APP_STORE_CONNECT_KEY_P8` | base64 of the `.p8` file |
 
-## 8. Build and upload
+## 9. Build and upload
 
 GitHub → Actions → **Mac App Store** → *Run workflow* → tick **Upload** → Run.
 
@@ -86,7 +111,7 @@ GitHub → Actions → **Mac App Store** → *Run workflow* → tick **Upload** 
 
 After about 15 minutes the build appears in App Store Connect under the version's **Build** section.
 
-## 9. Submit for review
+## 10. Submit for review
 
 Select the build, answer the export-compliance question (**No**: Fretlane uses only standard HTTPS),
 and in *App Review Information* paste:
