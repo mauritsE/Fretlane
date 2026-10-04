@@ -2,6 +2,7 @@
  * Thin typed wrapper around the YouTube IFrame Player API.
  * https://developers.google.com/youtube/iframe_api_reference
  */
+import type { MediaEvents, MediaPlayer, MediaState } from './media.ts';
 
 interface YTPlayer {
   playVideo(): void;
@@ -65,7 +66,7 @@ function loadApi(): Promise<YTNamespace> {
   return apiPromise;
 }
 
-export const YT_STATE = { UNSTARTED: -1, ENDED: 0, PLAYING: 1, PAUSED: 2, BUFFERING: 3, CUED: 5 } as const;
+const YT_STATE = { UNSTARTED: -1, ENDED: 0, PLAYING: 1, PAUSED: 2, BUFFERING: 3, CUED: 5 } as const;
 
 const ERRORS: Record<number, string> = {
   2: 'Invalid YouTube video id.',
@@ -75,17 +76,17 @@ const ERRORS: Record<number, string> = {
   150: 'The owner does not allow this video to be embedded.',
 };
 
-export interface YouTubeEvents {
-  onStateChange?: (state: number) => void;
-  onError?: (message: string) => void;
-  onRateChange?: (rate: number) => void;
-}
+const STATES: Partial<Record<number, MediaState>> = {
+  [YT_STATE.PLAYING]: 'playing',
+  [YT_STATE.PAUSED]: 'paused',
+  [YT_STATE.ENDED]: 'ended',
+};
 
-export class YouTubeVideo {
+export class YouTubeVideo implements MediaPlayer {
   private player: YTPlayer | null = null;
   private ready!: Promise<void>;
 
-  static async create(host: HTMLElement, videoId: string, events: YouTubeEvents): Promise<YouTubeVideo> {
+  static async create(host: HTMLElement, videoId: string, events: MediaEvents): Promise<YouTubeVideo> {
     const yt = await loadApi();
     const v = new YouTubeVideo();
     const mount = document.createElement('div');
@@ -98,9 +99,8 @@ export class YouTubeVideo {
         playerVars: { playsinline: 1, rel: 0, modestbranding: 1, controls: 1 },
         events: {
           onReady: () => resolve(),
-          onStateChange: (e) => events.onStateChange?.(e.data),
+          onStateChange: (e) => events.onStateChange?.(STATES[e.data] ?? 'other'),
           onError: (e) => events.onError?.(ERRORS[e.data] ?? `YouTube error ${e.data}`),
-          onPlaybackRateChange: (e) => events.onRateChange?.(e.data),
         },
       });
     });
@@ -128,9 +128,6 @@ export class YouTubeVideo {
   }
   setRate(rate: number): void {
     this.player?.setPlaybackRate(rate);
-  }
-  availableRates(): number[] {
-    return this.player?.getAvailablePlaybackRates() ?? [1];
   }
   setVolume(v: number): void {
     this.player?.setVolume(Math.round(v * 100));

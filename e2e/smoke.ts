@@ -40,6 +40,34 @@ const FAKE_YT = `
   window.YT = { Player: FakePlayer, PlayerState: { UNSTARTED: -1, ENDED: 0, PLAYING: 1, PAUSED: 2, BUFFERING: 3, CUED: 5 } };
 })();`;
 
+// Mimics Spotify's iFrame API: position reports only every 500 ms, play() restarts from the top,
+// and a seek before the first play is ignored, like the real embed.
+const FAKE_SPOTIFY = `
+(() => {
+  class FakeController {
+    constructor(el, opts) {
+      this.t = 0; this.paused = true; this.everPlayed = false; this.listeners = {}; this.opts = opts; this.seeksIgnored = 0;
+      const box = document.createElement('div');
+      box.id = 'fake-sp'; box.textContent = 'FAKE SPOTIFY ' + opts.uri;
+      box.style.cssText = 'width:100%;height:152px;display:grid;place-items:center;color:#fff;background:#1db954';
+      el.replaceWith(box);
+      window.__fakeSP = this;
+      setTimeout(() => this._emit('ready'), 50);
+      setInterval(() => { if (!this.paused) this.t = Math.min(this.t + 0.05, 200); }, 50);
+      setInterval(() => this._update(), 500);
+    }
+    addListener(ev, cb) { (this.listeners[ev] = this.listeners[ev] || []).push(cb); }
+    _emit(ev, data) { (this.listeners[ev] || []).forEach((cb) => cb({ data })); }
+    _update() { this._emit('playback_update', { isPaused: this.paused, isBuffering: false, duration: 200000, position: Math.round(this.t * 1000) }); }
+    play() { this.t = 0; this.paused = false; this.everPlayed = true; this._update(); }
+    resume() { this.paused = false; this.everPlayed = true; this._update(); }
+    pause() { this.paused = true; this._update(); }
+    seek(s) { if (!this.everPlayed) { this.seeksIgnored++; return; } this.t = s; this._update(); }
+    destroy() {}
+  }
+  window.onSpotifyIframeApiReady && window.onSpotifyIframeApiReady({ createController: (el, opts, cb) => cb(new FakeController(el, opts)) });
+})();`;
+
 let failures = 0;
 function check(cond: boolean, msg: string): void {
   console.log(`${cond ? 'PASS' : 'FAIL'}  ${msg}`);
@@ -66,6 +94,7 @@ page.on('pageerror', (e) => errors.push(e.message));
 page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
 // Block the real YouTube script and provide the fake instead.
 await page.route('https://www.youtube.com/iframe_api', (r) => r.fulfill({ contentType: 'text/javascript', body: `${FAKE_YT}; window.onYouTubeIframeAPIReady && window.onYouTubeIframeAPIReady();` }));
+await page.route('https://open.spotify.com/embed/iframe-api/v1', (r) => r.fulfill({ contentType: 'text/javascript', body: FAKE_SPOTIFY }));
 await page.route('https://i.ytimg.com/**', (r) => r.fulfill({ status: 404, body: '' }));
 
 // ---------- library ----------
@@ -242,6 +271,88 @@ await page.screenshot({ path: `${SHOTS}03-player-video-sync.png` });
 
 // cleanup
 await api(`/api/songs/${song.id}`, { method: 'DELETE' });
+
+// ---------- a song that plays along with a (fake) Spotify track ----------
+const SP_ID = '4uLU6hMCjMI75M1A2tKUQC';
+const spSong = await api<{ id: string; youtubeId: string; spotifyId: string }>('/api/songs', {
+  method: 'POST',
+  body: JSON.stringify({
+    title: 'E2E Spotify Song',
+    artist: 'Test',
+    media: `https://open.spotify.com/intl-nl/track/${SP_ID}?si=abc`,
+    tabText: 'e|--0--3--|--5--7--|--0--3--|--5--7--|\nB|--1-----|--------|--1-----|--------|\nG|--------|--------|--------|--------|\nD|--------|--------|--------|--------|\nA|--------|--------|--------|--------|\nE|--------|--------|--------|--------|\n',
+  }),
+});
+check(spSong.spotifyId === SP_ID && spSong.youtubeId === '', 'a Spotify link is stored as the song recording');
+
+await page.goto(`${BASE}/#/`);
+await page.waitForSelector(`.song-card[data-title="E2E Spotify Song"] .badge.sp`);
+check(true, 'library card shows the Spotify badge');
+
+const spPage = `${BASE}/#/song/${spSong.id}`;
+await page.goto(spPage);
+await waitRendered(page);
+await page.waitForFunction(() => !!(window as any).__fakeSP);
+check(await page.locator('#fake-sp').isVisible(), 'player shows the (fake) Spotify embed');
+check((await page.locator('.video-toolbar span').first().textContent()) === 'Spotify', 'panel is labelled Spotify');
+check(await page.locator('footer select[title*="playback speed"]').isDisabled(), 'speed is locked for Spotify (the embed has no speed control)');
+
+await page.click('button.play');
+await page.waitForTimeout(1600);
+// Sample within one 500 ms report window: the cursor must keep moving between reports.
+const samples: number[] = [];
+for (let i = 0; i < 5; i++) {
+  samples.push(await page.evaluate(() => (window as any).fretlane.at.timePosition as number));
+  await page.waitForTimeout(80);
+}
+const sp1 = await page.evaluate(() => ({ sp: (window as any).__fakeSP.t, at: (window as any).fretlane.at.timePosition, paused: (window as any).__fakeSP.paused }));
+check(!sp1.paused, 'alphaTab play() started the Spotify track');
+check(Math.abs(sp1.at - sp1.sp * 1000) < 250, `tab time follows Spotify time (tab ${Math.round(sp1.at)}ms vs track ${Math.round(sp1.sp * 1000)}ms)`);
+check(samples.every((v, i) => i === 0 || v > samples[i - 1]), `cursor moves smoothly between position reports (${samples.map(Math.round).join(', ')})`);
+
+await page.evaluate(() => (window as any).__fakeSP.pause());
+await page.waitForTimeout(200);
+check((await page.evaluate(() => (window as any).fretlane.at.playerState)) === 0, 'pausing Spotify pauses the tab');
+
+// Pin bar 1 to 2.0 s in the track.
+await page.evaluate(() => (window as any).__fakeSP.seek(2));
+await page.waitForTimeout(100);
+await page.click('text=⇆ Sync');
+check((await page.locator('.sync-panel h3').textContent()) === 'Sync tab ⇆ track', 'sync panel talks about the track');
+await page.fill('.sync-panel input[type=number]', '1');
+await page.click('text=📌 Pin to track time');
+await page.waitForTimeout(600);
+const spPinned = await api<{ syncPoints: { bar: number; time: number }[] }>(`/api/songs/${spSong.id}`);
+check(spPinned.syncPoints.length === 1 && Math.abs(spPinned.syncPoints[0].time - 2) < 0.05, `Spotify sync pin saved (${JSON.stringify(spPinned.syncPoints)})`);
+await page.evaluate(() => (window as any).__fakeSP.seek(3));
+await page.waitForTimeout(300);
+const spAfterPin = await page.evaluate(() => (window as any).fretlane.at.timePosition as number);
+check(Math.abs(spAfterPin - 1000) < 150, `with bar 1 pinned at 2.0s, track 3.0s maps to tab ${Math.round(spAfterPin)}ms (expected ~1000)`);
+await page.screenshot({ path: `${SHOTS}04-player-spotify.png` });
+
+// Fresh page: Spotify ignores a seek before the first play, so playing from a clicked bar must still start there.
+await page.goto('about:blank');
+await page.goto(spPage);
+await waitRendered(page);
+await page.waitForFunction(() => !!(window as any).__fakeSP);
+await page.waitForTimeout(300);
+const bar2 = await page.evaluate(() => {
+  const at = (window as any).fretlane.at;
+  const b = at.boundsLookup.staffSystems[0].bars[1].bars[0].beats[0].visualBounds;
+  const r = document.querySelector('.at-host')!.getBoundingClientRect();
+  return { x: r.left + b.x + b.w / 2, y: r.top + b.y + b.h / 2 };
+});
+await page.mouse.click(bar2.x, bar2.y);
+await page.waitForTimeout(200);
+const bar2Ms = await page.evaluate(() => (window as any).fretlane.at.timePosition as number);
+await page.click('button.play');
+await page.waitForTimeout(1200);
+const fromBar2 = await page.evaluate(() => ({ sp: (window as any).__fakeSP.t }));
+const expectStart = 2 + bar2Ms / 1000;
+check(fromBar2.sp > expectStart + 0.5 && fromBar2.sp < expectStart + 1.8, `first play starts from the clicked bar (track at ${fromBar2.sp.toFixed(2)}s, bar starts at ${expectStart.toFixed(2)}s)`);
+await page.evaluate(() => (window as any).__fakeSP.pause());
+
+await api(`/api/songs/${spSong.id}`, { method: 'DELETE' });
 
 const relevant = errors.filter((e) => !/favicon|ytimg|404/.test(e));
 check(relevant.length === 0, `no page errors${relevant.length ? ': ' + relevant.join(' | ') : ''}`);

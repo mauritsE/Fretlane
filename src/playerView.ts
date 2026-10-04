@@ -5,11 +5,12 @@ import { APP_NAME } from '../shared/brand.ts';
 import { api } from './api.ts';
 import { formatTime, h, toast } from './dom.ts';
 import { openSongDialog } from './libraryView.ts';
-import { YouTubeVideo, YT_STATE } from './youtube.ts';
+import { YouTubeVideo } from './youtube.ts';
+import { SpotifyTrack } from './spotify.ts';
+import { MEDIA_KINDS, type MediaKind, type MediaPlayer, type MediaState } from './media.ts';
 import { metronomeButton, setMetronomeSongContext } from './metronome.ts';
 
 const QUARTER_TICKS = 960;
-const YT_RATES = [0.25, 0.5, 0.75, 1, 1.25, 1.5];
 const SYNTH_RATES = [0.25, 0.5, 0.6, 0.7, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5];
 
 type Cleanup = () => void;
@@ -25,9 +26,13 @@ export async function renderPlayer(root: HTMLElement, songId: string): Promise<C
     return () => {};
   }
 
-  const useVideo = !!song.youtubeId;
+  // The recording the tab follows. "video" names below cover a Spotify track too.
+  const mediaKind: MediaKind | null = song.youtubeId ? 'youtube' : song.spotifyId ? 'spotify' : null;
+  const media = mediaKind ? MEDIA_KINDS[mediaKind] : null;
+  const noun = media?.noun ?? 'video';
+  const useVideo = !!mediaKind;
   const cleanups: Cleanup[] = [];
-  let video: YouTubeVideo | null = null;
+  let video: MediaPlayer | null = null;
   let currentBar = 0;
   let tapMode = false;
   let tapNextBar = 0;
@@ -38,14 +43,14 @@ export async function renderPlayer(root: HTMLElement, songId: string): Promise<C
   const viewport = h('div.at-viewport', {}, tabHost);
   const overlay = h('div.at-overlay', {}, h('div.spinner'), h('span', {}, 'Loading tab…'));
   const trackList = h('ul.track-list');
-  const videoBox = h('div.video-box');
+  const videoBox = h('div.video-box', { 'data-kind': mediaKind ?? '' });
   const videoPanel = h(
     'div.video-panel',
     { class: useVideo ? '' : 'hidden' },
     h(
       'div.video-toolbar',
       {},
-      h('span', {}, 'YouTube'),
+      h('span', {}, media?.label ?? ''),
       h('span.spacer'),
       ...(['S', 'M', 'L'] as const).map((sz) =>
         h('button.icon', { title: `Size ${sz}`, onclick: () => (videoPanel.dataset.size = sz) }, sz),
@@ -60,17 +65,21 @@ export async function renderPlayer(root: HTMLElement, songId: string): Promise<C
   const stopBtn = h('button.icon', { title: 'Back to start' }, '⏮');
   const timeEl = h('span.time', {}, '0:00.00');
   const barEl = h('span.bar-pos', {}, 'Bar 1');
+  const rates = media?.rates ?? SYNTH_RATES;
   const speedSel = h(
     'select',
-    { title: 'Playback speed' },
-    ...(useVideo ? YT_RATES : SYNTH_RATES).map((r) => h('option', { value: r, selected: r === 1 }, `${Math.round(r * 100)}%`)),
+    {
+      title: rates.length > 1 ? 'Playback speed' : `${media?.label} can't change the playback speed`,
+      disabled: rates.length < 2,
+    },
+    ...rates.map((r) => h('option', { value: r, selected: r === 1 }, `${Math.round(r * 100)}%`)),
   );
   const loopBtn = h('button.toggle', { title: 'Loop the selected range (drag across the tab to select). Shortcut: L' }, '⟲ Loop');
   const metroBtn = h(
     'button.toggle',
     {
       title: useVideo
-        ? 'The click track follows the built-in synthesizer. With a video, use the Metronome (M) at the song tempo.'
+        ? `The click track follows the built-in synthesizer. With a ${noun}, use the Metronome (M) at the song tempo.`
         : 'Click track: a click on every beat that follows the tab exactly',
       disabled: useVideo,
     },
@@ -95,7 +104,7 @@ export async function renderPlayer(root: HTMLElement, songId: string): Promise<C
     h('option', { value: String(alphaTab.StaveProfile.ScoreTab) }, 'Score + Tab'),
     h('option', { value: String(alphaTab.StaveProfile.Score) }, 'Score'),
   );
-  const syncBtn = h('button.toggle', { title: 'Align the tab with the video', disabled: !useVideo }, '⇆ Sync');
+  const syncBtn = h('button.toggle', { title: `Align the tab with the ${noun}`, disabled: !useVideo }, '⇆ Sync');
 
   const syncPanel = h('aside.sync-panel.hidden');
 
@@ -138,7 +147,7 @@ export async function renderPlayer(root: HTMLElement, songId: string): Promise<C
         {
           onclick: () =>
             openSongDialog(song, async (s) => {
-              const videoChanged = s.youtubeId !== song.youtubeId;
+              const videoChanged = s.youtubeId !== song.youtubeId || s.spotifyId !== song.spotifyId;
               song = s;
               titleEl.replaceChildren(h('strong', {}, s.title), h('span', {}, ` — ${s.artist}`));
               if (videoChanged) location.reload();
@@ -220,18 +229,25 @@ export async function renderPlayer(root: HTMLElement, songId: string): Promise<C
   at.playedBeatChanged.on((beat) => setCurrentBar(beat.voice.bar.masterBar.index));
   at.beatMouseDown.on((beat) => setCurrentBar(beat.voice.bar.masterBar.index));
 
-  // ---------- YouTube <-> alphaTab bridge ----------
-  if (useVideo) {
+  // ---------- YouTube/Spotify <-> alphaTab bridge ----------
+  if (mediaKind && media) {
     try {
-      video = await YouTubeVideo.create(videoBox, song.youtubeId, {
-        onStateChange: (state) => {
-          // The video is the master clock: mirror its state into alphaTab.
-          if (state === YT_STATE.PLAYING) at.play();
-          else if (state === YT_STATE.PAUSED) at.pause();
-          else if (state === YT_STATE.ENDED) at.stop();
+      const events = {
+        onStateChange: (state: MediaState) => {
+          // The recording is the master clock: mirror its state into alphaTab.
+          if (state === 'playing') at.play();
+          else if (state === 'paused') at.pause();
+          else if (state === 'ended') at.stop();
         },
-        onError: (msg) => toast(`YouTube: ${msg}`, 'error'),
-      });
+        onError: (msg: string) => toast(`${media.label}: ${msg}`, 'error'),
+      };
+      video =
+        mediaKind === 'youtube'
+          ? await YouTubeVideo.create(videoBox, song.youtubeId, events)
+          : await SpotifyTrack.create(videoBox, song.spotifyId, {
+              ...events,
+              onPreview: () => toast('Spotify is playing a 30-second preview. Log in to Spotify in this browser to hear the full track.'),
+            });
       cleanups.push(() => video?.destroy());
       const v = video;
       const handler: alphaTab.synth.IExternalMediaHandler = {
@@ -415,11 +431,11 @@ export async function renderPlayer(root: HTMLElement, songId: string): Promise<C
       ? h('p.tap-info', {}, `Tapping: press T on the first beat of bar ${tapNextBar + 1}. Press Esc to stop.`)
       : null;
     const children: (Node | null)[] = [
-      h('div.sync-head', {}, h('h3', {}, 'Sync tab ⇆ video'), h('button.icon', { title: 'Close', onclick: () => toggleSync(false) }, '✕')),
+      h('div.sync-head', {}, h('h3', {}, `Sync tab ⇆ ${noun}`), h('button.icon', { title: 'Close', onclick: () => toggleSync(false) }, '✕')),
       h(
         'p.hint',
         {},
-        'Pause the video exactly on the first beat of a bar, then pin that bar to the current video time. ',
+        `Pause the ${noun} exactly on the first beat of a bar, then pin that bar to the current ${noun} time. `,
         'One pin sets the start; add more pins to follow tempo changes in the recording.',
       ),
       h(
@@ -435,7 +451,7 @@ export async function renderPlayer(root: HTMLElement, songId: string): Promise<C
               setSyncPoints(upsertSyncPoint(song.syncPoints, bar, t), `Pinned bar ${bar + 1} to ${formatTime(t)}`);
             },
           },
-          '📌 Pin to video time',
+          `📌 Pin to ${noun} time`,
         ),
       ),
       h(
@@ -445,7 +461,7 @@ export async function renderPlayer(root: HTMLElement, songId: string): Promise<C
           'button',
           {
             class: tapMode ? 'active' : '',
-            title: 'Play the video and press T on the first beat of every bar',
+            title: `Play the ${noun} and press T on the first beat of every bar`,
             onclick: () => {
               tapMode = !tapMode;
               tapNextBar = Math.max(1, Math.floor(Number(barInput.value) || 1)) - 1;
@@ -469,7 +485,7 @@ export async function renderPlayer(root: HTMLElement, songId: string): Promise<C
         ? h(
             'table.sync-table',
             {},
-            h('tr', {}, h('th', {}, 'Bar'), h('th', {}, 'Video time'), h('th', {})),
+            h('tr', {}, h('th', {}, 'Bar'), h('th', {}, `${noun[0].toUpperCase()}${noun.slice(1)} time`), h('th', {})),
             ...pts.map((p) =>
               h(
                 'tr',
@@ -496,7 +512,7 @@ export async function renderPlayer(root: HTMLElement, songId: string): Promise<C
               ),
             ),
           )
-        : h('p.hint', {}, 'No pins yet: bar 1 starts at 0:00 in the video.'),
+        : h('p.hint', {}, `No pins yet: bar 1 starts at 0:00 in the ${noun}.`),
       pts.length ? h('button.danger', { onclick: () => confirm('Remove all sync pins?') && setSyncPoints([], 'Sync cleared') }, 'Clear all') : null,
     ];
     syncPanel.replaceChildren(...children.filter((c): c is Node => c !== null));

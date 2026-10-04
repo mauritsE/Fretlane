@@ -19,6 +19,8 @@ The complete typed API is in `node_modules/@coderline/alphatab/dist/alphaTab.d.t
 - Push the media clock every animation frame: `output.updatePosition(videoSeconds * 1000)`.
 - Mirror media state into alphaTab: YT PLAYING → `at.play()`, PAUSED → `at.pause()`, ENDED → `at.stop()`. Calling `at.play()` again calls `handler.play()`, which is harmless.
 - **All times are milliseconds** on the alphaTab side, while YouTube uses seconds.
+- Sources that only report their position now and then (Spotify's embed) need interpolation between reports (`shared/mediaClock.ts`), or the cursor stutters.
+- alphaTab calls `handler.seekTo()` on its own, for example when the tab reaches its end. Don't build logic that assumes every seek came from the user.
 
 ## Sync points
 - Model: `MasterBar.syncPoints: Automation[] | undefined`. The easy path is `score.applyFlatSyncPoints([{ barIndex, barPosition: 0, barOccurence: 0, millisecondOffset }])`, followed by `at.updateSyncPoints()` after any change.

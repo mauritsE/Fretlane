@@ -14,6 +14,8 @@ export interface Song {
   artist: string;
   /** 11-character YouTube video id, or empty when the song has no video. */
   youtubeId: string;
+  /** 22-character Spotify track id, or empty. A song has a YouTube video or a Spotify track, not both. */
+  spotifyId: string;
   /** File name of the stored tab inside library/tabs. */
   tabFile: string;
   tabFormat: TabFormat;
@@ -39,6 +41,8 @@ export interface NewSongInput {
   title?: string;
   artist?: string;
   youtube?: string;
+  /** A YouTube or Spotify link (replaces `youtube` when given). */
+  media?: string;
   tags?: string[];
   /** One of these three provides the tab. */
   tabUrl?: string;
@@ -48,6 +52,8 @@ export interface NewSongInput {
 
 export type SongPatch = Partial<Pick<Song, 'title' | 'artist' | 'youtubeId' | 'syncPoints' | 'defaultTrack' | 'tags' | 'favorite'>> & {
   youtube?: string;
+  /** A YouTube or Spotify link; it replaces the song's recording, and an empty string removes it. */
+  media?: string;
   /** true moves the song to the archive (marks it done), false restores it. */
   archived?: boolean;
 };
