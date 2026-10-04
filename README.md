@@ -140,7 +140,7 @@ Rendering and playback are done by [alphaTab](https://alphatab.net) (MPL-2.0). M
 
 ## Support Fretlane
 
-Fretlane is free and open source. If it helps you learn songs and you'd like to say thanks, you can [buy me a coffee on Ko-fi](https://ko-fi.com/mauritselzinga). Bug reports and ideas are just as welcome.
+Fretlane is free and open source. If it helps you learn songs and you'd like to say thanks, you can [buy me a coffee on Ko-fi](https://ko-fi.com/mauritselzinga). The Mac App Store version costs a few euros: buying it supports development and gets you a signed app that installs and updates in one click. The source code and the downloads here stay free. Bug reports and ideas are just as welcome.
 
 ## License
 

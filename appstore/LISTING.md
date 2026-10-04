@@ -9,7 +9,7 @@ Copy these into App Store Connect (My Apps → Fretlane → the version page). C
 | Primary category | Music |
 | Secondary category | Education |
 | Age rating | 4+ (no objectionable content; the app can show YouTube videos the user links, see "Web access" below) |
-| Price | Free |
+| Price | €4.99, one-time (base country Netherlands; see step 6 of `SUBMITTING.md`). The source and GitHub downloads stay free. |
 | Copyright | 2026 Maurits Elzinga |
 | Support URL | https://github.com/mauritsE/Fretlane/issues |
 | Marketing URL | https://github.com/mauritsE/Fretlane |
