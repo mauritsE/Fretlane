@@ -119,4 +119,5 @@ Instagram allows at most 5 hashtags per post, so each caption ends with 3–5.
   people who click "link in bio" get an app that doesn't match the videos.
 - The drummer and Guitar Pro details come from what you've told me about yourself. Adjust anything that doesn't sound like you.
 - The built-in songs are public-domain tunes (Greensleeves, Für Elise, House of the Rising Sun…), not chart hits. If someone asks for a specific pop song, that works through importing their own tab, not bundled.
+- Spotify play-along has its own announcement images and post text in [`../social/`](../social/README.md).
 - YouTube sync is mentioned in carousel slide 5. These Reels don't show it, because the sandbox that recorded them can't reach YouTube. Your own recording (`marketing/work/youtube-sync.mov`, used in the LinkedIn video) would make a strong fifth Reel; see "Your own footage" in `README.md`.
