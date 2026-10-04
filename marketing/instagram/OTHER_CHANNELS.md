@@ -7,7 +7,7 @@ covers LinkedIn and YouTube.
 ## GitHub (do this first, every other link points here)
 - **Settings → General → Social preview → Upload** `social-preview.png`. Every link to the repo on X,
   Bluesky, LinkedIn, Slack, Discord and Reddit then shows the card instead of GitHub's default.
-- Repo **About** text: "Free guitar tab player where the whole band plays along. Guitar Pro, MusicXML and text tabs, YouTube sync. Mac, Windows, Linux."
+- Repo **About** text: "Free guitar tab player where the whole band plays along. Guitar Pro, MusicXML and text tabs, YouTube and Spotify sync. Mac, Windows, Linux."
 - Topics: `guitar`, `guitar-tabs`, `music`, `alphatab`, `electron`, `typescript`, `practice`.
 
 ## Reddit
@@ -25,7 +25,7 @@ Body:
 > - Speed from 25% to 150%, loop any range, count-in, click track
 > - Metronome that picks up the song's tempo, with tap tempo
 > - 22 public-domain songs built in; import Guitar Pro, MusicXML, alphaTex or pasted text tabs
-> - Link a YouTube video and the tab follows it, bar by bar
+> - Link a YouTube video or a Spotify track and the tab follows it, bar by bar
 > - Local-first: your library is a folder on your own computer, no account
 >
 > Desktop app for Mac, Windows and Linux. MIT licensed, built on alphaTab: https://github.com/mauritsE/Fretlane
@@ -40,7 +40,7 @@ Title (80 chars max):
 > Show HN: Fretlane – open-source guitar tab player where the whole band plays
 
 Text:
-> Fretlane plays guitar tabs with the whole band (melody, rhythm, bass, drums) and a cursor that follows the notes. It imports Guitar Pro, MusicXML, alphaTex and plain-text tabs (converted to alphaTex), and can sync a tab to a YouTube video with per-bar sync points.
+> Fretlane plays guitar tabs with the whole band (melody, rhythm, bass, drums) and a cursor that follows the notes. It imports Guitar Pro, MusicXML, alphaTex and plain-text tabs (converted to alphaTex), and can sync a tab to a YouTube video or a Spotify track with per-bar sync points.
 >
 > It's vanilla TypeScript + Vite on top of alphaTab, with a small Node server that keeps the library as a JSON file plus tab files in a folder. The desktop app is Electron running the same server in-process. The built-in songbook is generated from note names and chord symbols; a test renders every song through alphaTab and checks it plays the written pitches.
 >
