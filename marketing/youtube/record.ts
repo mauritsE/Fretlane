@@ -8,7 +8,7 @@
  * every AudioNode connected to the speakers is also connected to a MediaRecorder, so what you hear
  * is what the app played. Needs a fresh library: it stars, archives and adds a song.
  */
-import { chromium, type Page } from 'playwright';
+import { chromium } from 'playwright';
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 
 const BASE = process.argv[2] ?? 'http://localhost:5183';
