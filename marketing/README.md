@@ -1,5 +1,6 @@
 # Marketing video
 
+> YouTube walkthrough, trailer, thumbnails and upload copy: see [`youtube/`](youtube/README.md).
 > Instagram Reels, carousel, stories, link card and copy for other channels: see [`instagram/`](instagram/README.md).
 > Spotify announcement images (square, landscape, story) and post text: see [`social/`](social/README.md).
 

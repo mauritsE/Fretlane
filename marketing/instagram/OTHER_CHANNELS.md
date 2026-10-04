@@ -62,5 +62,5 @@ Attach `reel-band.mp4` (all four accept vertical video) and let the link card do
 Thread follow-ups, one per Reel: paste ("plain-text tab in, music out"), practice ("half speed + loop + metronome"), archive ("the most satisfying button").
 
 ## YouTube
-- **Shorts:** upload the four Reels as they are; use the Reel captions as descriptions, and put the GitHub link in the description.
-- **Long-form:** `../fretlane-demo.mp4` (96 s, narrated, captions burned in). Title: "Fretlane: a free guitar tab player where the whole band plays along".
+Everything for YouTube (a 3:26 narrated tour with chapters, a trailer, thumbnails, titles,
+descriptions and tags) is in [`../youtube/`](../youtube/YOUTUBE.md). The Reels work as Shorts as they are.
