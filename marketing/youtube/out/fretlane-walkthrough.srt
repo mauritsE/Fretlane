@@ -1,0 +1,119 @@
+1
+00:00:00,500 --> 00:00:06,684
+This is Fretlane: a free, open-source guitar tab player where the whole band plays along.
+
+2
+00:00:07,134 --> 00:00:09,732
+Here's a quick tour of everything it does.
+
+3
+00:00:10,582 --> 00:00:16,496
+Your library starts out full: twenty-two well-known songs, arranged for the whole band.
+
+4
+00:00:16,646 --> 00:00:21,286
+Each one is tagged by level, so you can start with the beginner songs.
+
+5
+00:00:21,436 --> 00:00:24,457
+Or search by title, artist or tag.
+
+6
+00:00:25,083 --> 00:00:30,628
+Open a song and press play. The whole band plays, and the cursor follows every note.
+
+7
+00:00:34,451 --> 00:00:39,722
+Click a track to read that part: the bass line, the drums, or back to the melody.
+
+8
+00:00:45,527 --> 00:00:50,008
+Solo or mute any instrument to hear exactly what it plays.
+
+9
+00:00:52,064 --> 00:00:54,681
+Zoom in when you need a closer look.
+
+10
+00:00:57,264 --> 00:01:02,330
+Too fast? Slow it down, from a quarter of the speed up to one and a half times.
+
+11
+00:01:05,522 --> 00:01:10,429
+To drill a tricky passage, drag across the bars and press L to loop them.
+
+12
+00:01:10,579 --> 00:01:14,387
+Add a count-in, and a click track that follows the tab.
+
+13
+00:01:14,537 --> 00:01:19,288
+Now it counts you in, and keeps repeating those bars until you have them.
+
+14
+00:01:29,920 --> 00:01:35,582
+The metronome sets itself to the song's tempo, at your practice speed, in one click.
+
+15
+00:01:37,145 --> 00:01:39,735
+Pick eighths, triplets or sixteenths.
+
+16
+00:01:41,534 --> 00:01:43,636
+Or tap in any tempo you like.
+
+17
+00:01:51,121 --> 00:01:55,560
+Star the songs you're working on, and find them all under Favorites.
+
+18
+00:02:00,105 --> 00:02:05,639
+Learned a song? Mark it as done and it moves to the archive. One click brings it back.
+
+19
+00:02:07,689 --> 00:02:13,522
+Add your own tabs: a Guitar Pro or MusicXML file, or a link to one.
+
+20
+00:02:13,672 --> 00:02:17,991
+Or paste a plain-text tab, the kind you find all over the web.
+
+21
+00:02:19,298 --> 00:02:24,071
+Fretlane turns it into a real tab you can play, slow down and loop.
+
+22
+00:02:26,098 --> 00:02:31,121
+Text tabs don't carry rhythm, so the timing inside a bar is a best guess.
+
+23
+00:02:32,664 --> 00:02:37,808
+Link a YouTube video, and the tab follows the recording, bar by bar.
+
+24
+00:02:41,914 --> 00:02:46,170
+Switch between lead, rhythm and bass while the video keeps playing.
+
+25
+00:02:51,514 --> 00:02:56,831
+To set it up, pause the video on the first beat, and pin bar one to that moment.
+
+26
+00:02:57,281 --> 00:03:03,491
+If the band speeds up or slows down, pin more bars, or tap along on every downbeat.
+
+27
+00:03:03,941 --> 00:03:08,214
+Spotify tracks work the same way, always at normal speed.
+
+28
+00:03:09,064 --> 00:03:13,698
+Fretlane is a normal desktop app for Mac, Windows and Linux.
+
+29
+00:03:14,148 --> 00:03:20,450
+Your songs are plain files in a folder on your own computer. No account, nothing uploaded.
+
+30
+00:03:20,900 --> 00:03:25,449
+It's free and open source. The download link is in the description.
