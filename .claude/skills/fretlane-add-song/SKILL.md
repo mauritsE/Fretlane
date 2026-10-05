@@ -12,6 +12,7 @@ The app must be running (`npm run dev` or `npm start`); both expose the API at `
 - **Bulk folder:** loop over files with the same command, e.g.
   `for f in ~/Tabs/*.gp*; do npm run add-song -- "$f" --tags imported; done`
 - **Pasted text or alphaTex:** `POST /api/songs` with `{"tabText": "...", "title": "...", "artist": "...", "media": "<YouTube or Spotify link>"}`
+- **Find a recording:** `GET /api/search?source=youtube|spotify&q=<artist title>` returns ranked `{results:[{url,title,artist,duration,...}], error?, openUrl}`; put the chosen `url` in `media`. Spotify needs credentials (`PUT /api/settings` with `spotifyClientId`, `spotifyClientSecret`). Check the top result's title and duration before trusting it.
 - **Edit metadata or video later:** `PATCH /api/songs/:id` with any of `title, artist, media (YouTube or Spotify link; empty removes it), tags, defaultTrack, syncPoints`
 
 Supported tabs: Guitar Pro 3-8, MusicXML/.mxl, alphaTex, plain-text ASCII tabs. Format is detected from the extension first, then from content (`shared/util.ts#detectTabFormat`). ASCII tabs are converted to alphaTex **on import**, so the stored file is always playable.

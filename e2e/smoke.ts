@@ -354,6 +354,50 @@ await page.evaluate(() => (window as any).__fakeSP.pause());
 
 await api(`/api/songs/${spSong.id}`, { method: 'DELETE' });
 
+// ---------- find a recording from the song dialog ----------
+// The real server answers Spotify (no credentials here, so it asks for them without going online).
+// YouTube is blocked in sandboxes, so its answer is faked at the browser: this tests the dialog,
+// not YouTube's search endpoint.
+const spNoCreds = await api<{ results: unknown[]; error?: string; openUrl: string }>('/api/search?source=spotify&q=pink%20floyd');
+check(!!spNoCreds.error?.includes('Client ID') && spNoCreds.openUrl.startsWith('https://open.spotify.com/search/'), 'Spotify search without credentials explains the setup and links to Spotify');
+const searched: string[] = [];
+await page.route(/\/api\/search\?source=youtube/, (r) => {
+  const q = new URL(r.request().url()).searchParams.get('q') ?? '';
+  searched.push(q);
+  const yt = (id: string, title: string, artist: string, duration: number, cleanArtist?: string) =>
+    ({ source: 'youtube', id, url: `https://www.youtube.com/watch?v=${id}`, title, artist, duration, thumbnail: `https://i.ytimg.com/vi/${id}/mqdefault.jpg`, cleanArtist });
+  return r.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({
+      openUrl: `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`,
+      results: [yt('IXdNnw99-Ic', 'Wish You Were Here', 'Pink Floyd - Topic', 334, 'Pink Floyd'), yt('hjpF8ukSrvk', 'Wish You Were Here - Guitar Lesson', 'Teacher', 900)],
+    }),
+  });
+});
+await page.goto(`${BASE}/#/`);
+await page.click('button:has-text("+ Add song")');
+await page.fill('input[name=title]', 'Wish You Were Here');
+await page.click('.recording-row button');
+await page.waitForSelector('.picker-result');
+check(searched.at(-1) === 'Wish You Were Here', `Find searches for the title when artist is empty ("${searched.at(-1)}")`);
+check((await page.locator('.picker-result').count()) === 2 && (await page.locator('.picker-result .badge').first().textContent()) === 'Best match', 'results are listed with the best match marked');
+await page.screenshot({ path: `${SHOTS}05-find-recording.png` });
+await page.click('.media-picker button[data-source=spotify]');
+await page.waitForSelector('.spotify-setup');
+check(((await page.locator('.picker-open').getAttribute('href')) ?? '').startsWith('https://open.spotify.com/search/'), 'Spotify tab shows the one-time setup and a link to search on Spotify');
+await page.screenshot({ path: `${SHOTS}06-find-spotify-setup.png` });
+await page.click('.media-picker button[data-source=youtube]');
+await page.waitForSelector('.picker-result');
+await page.locator('.picker-result').first().click();
+check((await page.inputValue('#song-recording')) === 'https://www.youtube.com/watch?v=IXdNnw99-Ic', 'picking a result fills in the YouTube link');
+check((await page.inputValue('input[name=artist]')) === 'Pink Floyd', 'the artist is copied from the Topic channel');
+check((await page.locator('.picker-host').innerHTML()) === '' && /✓ YouTube video/.test((await page.locator('.recording-field .hint').textContent()) ?? ''), 'the picker closes and the link is recognised');
+await page.fill('#song-recording', 'gymnopedie satie');
+await page.press('#song-recording', 'Enter');
+await page.waitForSelector('.picker-result');
+check(searched.at(-1) === 'gymnopedie satie' && (await page.locator('dialog.song-dialog').isVisible()), 'words + Enter in the Recording field search instead of submitting');
+await page.click('dialog.song-dialog button:has-text("Cancel")');
+
 const relevant = errors.filter((e) => !/favicon|ytimg|404/.test(e));
 check(relevant.length === 0, `no page errors${relevant.length ? ': ' + relevant.join(' | ') : ''}`);
 await browser.close();

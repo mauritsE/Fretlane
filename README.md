@@ -4,6 +4,7 @@ An open-source, local-first tab player in the spirit of Songsterr. Load a tab fr
 
 - **Tabs from anywhere:** Guitar Pro 3–8 (`.gp3/.gp4/.gp5/.gpx/.gp`), MusicXML (`.xml/.musicxml/.mxl`), [alphaTex](https://alphatab.net/docs/alphatex/introduction), and plain-text ASCII tabs. You can upload a file, give a URL (the local server downloads it, so there are no CORS problems), or paste text.
 - **Plays along with YouTube:** the video is the clock. Play, pause, seek, speed and looping on either the tab or the video stay in sync.
+- **Finds the recording for you:** click **🔍 Find** next to the Recording field (or type words there and press Enter) to search YouTube or Spotify for the artist and title. Results are ranked so the studio recording comes first; covers, lessons, live versions and full-album uploads sink unless you searched for them, because their timing differs from the record. YouTube search needs no account but uses YouTube's own, unofficial search endpoint, so it can break when YouTube changes it; the dialog then links to the same search on youtube.com. Spotify search uses Spotify's official Web API and needs a free Spotify developer app once (the dialog walks you through it; the Client ID and secret stay in `settings.json` in your library folder, or set `FRETLANE_SPOTIFY_CLIENT_ID` / `FRETLANE_SPOTIFY_CLIENT_SECRET`).
 - **…or with Spotify:** paste a Spotify track link instead. Play, pause, seek, looping and sync pins work the same way. Spotify's embed can't change speed, so Spotify songs play at 100%. You need to be logged in to Spotify in the browser to hear full tracks; otherwise Spotify plays a 30-second preview. In the desktop app expect previews only (untested: Electron lacks the DRM module Spotify uses for full tracks, and its login popup opens in your normal browser). Apple Music isn't supported: controlling it needs a paid Apple developer token.
 - **Sync editor:** pin bars to moments in the video. One pin sets the start. More pins let the tab follow tempo drift in a live recording. You can also press **T** on every downbeat to tap the song in.
 - **22 songs out of the box:** a songbook of well-known public-domain tunes (Greensleeves, House of the Rising Sun, Für Elise, Canon in D, Romanza, In the Hall of the Mountain King, Drunken Sailor…), arranged for melody guitar, rhythm guitar, bass and drums, marked beginner or intermediate.
@@ -46,7 +47,7 @@ On first start the library is seeded with three small **original** demo tabs and
 
 ## Adding songs
 
-**In the app:** click **+ Add song**, choose *Upload file*, *From URL* or *Paste text*, and optionally paste a YouTube or Spotify track link.
+**In the app:** click **+ Add song**, choose *Upload file*, *From URL* or *Paste text*, and optionally paste a YouTube or Spotify track link, or click **🔍 Find** to search for one.
 
 **From the command line** (while the app is running):
 

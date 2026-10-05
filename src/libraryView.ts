@@ -4,6 +4,8 @@ import { api, fileToBase64 } from './api.ts';
 import { APP_NAME } from '../shared/brand.ts';
 import { h, toast } from './dom.ts';
 import { metronomeButton } from './metronome.ts';
+import { mediaPicker } from './mediaPicker.ts';
+import { buildSearchQuery } from '../shared/mediaSearch.ts';
 
 type LibraryFilter = 'all' | 'favorites' | 'archive';
 /** Remembered while the app is open, so "Back to library" returns to the same view. */
@@ -184,6 +186,12 @@ export async function renderLibrary(root: HTMLElement): Promise<void> {
 
 const LEVELS = ['beginner', 'intermediate', 'advanced'];
 
+/** A link or bare id, as opposed to words to search for. */
+function looksLikeLink(v: string): boolean {
+  const { youtubeId, spotifyId } = parseMediaLink(v);
+  return !!youtubeId || !!spotifyId || /^(https?:|spotify:|www\.)/i.test(v) || /^\S+\.\S+\/\S*$/.test(v);
+}
+
 /** A stable colour per song for cards without a video thumbnail. */
 function hue(id: string): number {
   let h = 0;
@@ -197,8 +205,9 @@ export function openSongDialog(song: Song | null, onSaved: (s: Song) => void | P
   const title = h('input', { name: 'title', placeholder: editing ? '' : 'Leave empty to use the tab title / file name', value: song?.title ?? '' });
   const artist = h('input', { name: 'artist', value: song?.artist ?? '' });
   const recording = h('input', {
+    id: 'song-recording',
     name: 'media',
-    placeholder: 'https://www.youtube.com/watch?v=…  or  https://open.spotify.com/track/…',
+    placeholder: 'Paste a YouTube or Spotify link, or use Find',
     value: song ? mediaLinkUrl(song) : '',
   });
   const recordingHint = h('small.hint');
@@ -211,10 +220,45 @@ export function openSongDialog(song: Song | null, onSaved: (s: Song) => void | P
         ? `✓ YouTube video ${youtubeId}`
         : spotifyId
           ? `✓ Spotify track ${spotifyId}. Spotify can't slow down; log in to Spotify for full tracks instead of 30-second previews.`
-          : '⚠ Not a recognizable YouTube video or Spotify track link';
+          : looksLikeLink(v)
+            ? '⚠ Not a recognizable YouTube video or Spotify track link'
+            : `Press Enter or 🔍 Find to search for "${v}"`;
   };
   recording.addEventListener('input', checkRecording);
   checkRecording();
+
+  const pickerHost = h('div.picker-host');
+  const findButton = h('button', { type: 'button', title: 'Search YouTube or Spotify for this song', 'aria-expanded': 'false' }, '🔍 Find');
+  const closePicker = () => {
+    pickerHost.replaceChildren();
+    findButton.setAttribute('aria-expanded', 'false');
+  };
+  recording.addEventListener('keydown', (e) => {
+    const v = recording.value.trim();
+    if (e.key !== 'Enter' || !v || looksLikeLink(v)) return;
+    e.preventDefault(); // words in the Recording field search instead of submitting the form
+    pickerHost.replaceChildren();
+    findButton.click();
+  });
+  findButton.addEventListener('click', () => {
+    if (pickerHost.firstChild) return closePicker();
+    // Words typed into the Recording field (rather than a link) are the search; otherwise artist + title.
+    const typed = recording.value.trim();
+    const q = typed && !looksLikeLink(typed) ? typed : buildSearchQuery(title.value, artist.value, fileInput.files?.[0]?.name ?? '');
+    findButton.setAttribute('aria-expanded', 'true');
+    pickerHost.replaceChildren(
+      mediaPicker(q, (r) => {
+        recording.value = r.url;
+        checkRecording();
+        // Fill in what's still empty. Spotify and YouTube "Topic" channels give clean names;
+        // ordinary YouTube titles ("Song (Official Video) [HD]") are left alone.
+        if (!artist.value.trim() && r.cleanArtist) artist.value = r.cleanArtist;
+        if (!title.value.trim() && r.cleanArtist) title.value = r.title;
+        closePicker();
+        recording.focus();
+      }),
+    );
+  });
   const tags = h('input', { name: 'tags', placeholder: 'rock, practice, drop-d', value: song?.tags.join(', ') ?? '' });
 
   let source: 'file' | 'url' | 'text' = 'file';
@@ -294,7 +338,14 @@ export function openSongDialog(song: Song | null, onSaved: (s: Song) => void | P
     editing ? null : h('fieldset', {}, h('legend', {}, 'Tab'), tabs, paneHost, h('small.hint', {}, 'Guitar Pro 3–8 (.gp, .gp5, .gpx…), MusicXML, alphaTex, or plain-text tabs.')),
     h('label', {}, 'Title', title),
     h('label', {}, 'Artist', artist),
-    h('label', {}, 'Recording (YouTube or Spotify)', recording, recordingHint),
+    h(
+      'div.recording-field',
+      {},
+      h('label', { for: 'song-recording' }, 'Recording (YouTube or Spotify)'),
+      h('div.recording-row', {}, recording, findButton),
+      recordingHint,
+      pickerHost,
+    ),
     h('label', {}, 'Tags (comma separated)', tags),
     status,
     h('div.dialog-actions', {}, h('button', { type: 'button', onclick: () => dialog.close() }, 'Cancel'), submit),

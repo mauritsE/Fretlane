@@ -3,6 +3,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { HttpError, Library, type SeedSource } from './library.ts';
 import { fetchTab } from './fetchTab.ts';
+import { MediaSearch } from './mediaSearch.ts';
 import type { NewSongInput, SongPatch } from '../shared/types.ts';
 import { APP_ID } from '../shared/brand.ts';
 
@@ -65,6 +66,8 @@ export interface RunningServer {
 export async function startServer(opts: ServerOptions): Promise<RunningServer> {
   const library = new Library(opts.libraryDir);
   await library.init(opts.seed);
+  const mediaSearch = new MediaSearch(opts.libraryDir);
+  await mediaSearch.init();
 
   async function readJson<T>(req: http.IncomingMessage): Promise<T> {
     const chunks: Buffer[] = [];
@@ -124,6 +127,21 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
       res.writeHead(200, { 'content-type': 'application/octet-stream', 'x-tab-name': encodeURIComponent(name) });
       res.end(bytes);
       return;
+    }
+
+    // Find a recording for a song (results the user picks from; nothing is stored).
+    if (parts[1] === 'search' && method === 'GET') {
+      const source = url.searchParams.get('source');
+      if (source !== 'youtube' && source !== 'spotify') throw new HttpError(400, 'source must be youtube or spotify');
+      return send(res, 200, await mediaSearch.search(source, url.searchParams.get('q') ?? ''));
+    }
+
+    if (parts[1] === 'settings') {
+      if (method === 'GET') return send(res, 200, mediaSearch.publicSettings());
+      if (method === 'PUT') {
+        const body = await readJson<{ spotifyClientId?: string; spotifyClientSecret?: string }>(req);
+        return send(res, 200, await mediaSearch.setSpotifyCredentials(body.spotifyClientId ?? '', body.spotifyClientSecret ?? ''));
+      }
     }
 
     // `app` lets tools (and the smoke test) recognise this server.

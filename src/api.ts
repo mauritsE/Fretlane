@@ -1,4 +1,5 @@
 import type { NewSongInput, Song, SongPatch } from '../shared/types.ts';
+import type { MediaSearchResponse, MediaSource, PublicSettings } from '../shared/mediaSearch.ts';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
@@ -24,6 +25,11 @@ export const api = {
   updateSong: (id: string, patch: SongPatch) =>
     request<Song>(`/api/songs/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   deleteSong: (id: string) => request<{ ok: true }>(`/api/songs/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  searchMedia: (source: MediaSource, q: string) =>
+    request<MediaSearchResponse>(`/api/search?source=${source}&q=${encodeURIComponent(q)}`),
+  getSettings: () => request<PublicSettings>('/api/settings'),
+  setSpotifyCredentials: (spotifyClientId: string, spotifyClientSecret: string) =>
+    request<PublicSettings>('/api/settings', { method: 'PUT', body: JSON.stringify({ spotifyClientId, spotifyClientSecret }) }),
   async getTab(id: string): Promise<Uint8Array> {
     const res = await fetch(`/api/songs/${encodeURIComponent(id)}/tab`);
     if (!res.ok) throw new Error(`Could not load tab (${res.status})`);
