@@ -11,9 +11,9 @@ Copy these into App Store Connect (My Apps → Fretlane → the version page). C
 | Age rating | 4+ (no objectionable content; the app can show YouTube videos the user links, see "Web access" below) |
 | Price | €4.99, one-time (base country Netherlands; see step 6 of `SUBMITTING.md`). The source and GitHub downloads stay free. |
 | Copyright | 2026 Maurits Elzinga |
-| Support URL | https://github.com/mauritsE/Fretlane/issues |
+| Support URL | https://github.com/mauritsE/Fretlane/wiki/Support |
 | Marketing URL | https://github.com/mauritsE/Fretlane |
-| Privacy Policy URL | https://github.com/mauritsE/Fretlane/blob/main/appstore/PRIVACY.md |
+| Privacy Policy URL | https://github.com/mauritsE/Fretlane/wiki/Privacy-Policy |
 
 ## Promotional text (170)
 
@@ -59,4 +59,4 @@ First release on the Mac App Store.
 
 ## App Privacy ("nutrition label")
 
-Choose **Data Not Collected**. Fretlane has no analytics, no account and no server of its own. Note for the questionnaire: when a user links a YouTube video, the video plays in YouTube's own embedded player, which is covered by Google's privacy policy (mentioned in PRIVACY.md).
+Choose **Data Not Collected**. Fretlane has no analytics, no account and no server of its own. Note for the questionnaire: when a user links a YouTube video, the video plays in YouTube's own embedded player, which is covered by Google's privacy policy, and Spotify tracks play in Spotify's embedded player (both mentioned in the [privacy policy](../wiki/Privacy-Policy.md)).
