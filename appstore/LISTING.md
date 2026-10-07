@@ -196,8 +196,11 @@ down for other sizes. Apple allows up to 10.
 
 Regenerate them from a running app: `npx tsx scripts/appstore-screenshots.ts http://localhost:5173`.
 
-**App Preview video**: optional, skip it. The existing marketing videos are 96 s and longer;
-Apple's limit is 30 s.
+**App Preview video** (optional): `appstore/preview/fretlane-preview.mp4`, 27 s, 1920×1080, real
+app footage with the app's own sound and short captions. Drag it into the App Previews slot above
+the screenshots. It shows only bundled public-domain songs and an original riff, no YouTube or
+Spotify footage (Apple only allows content you have the rights to). How it's made:
+`appstore/preview/README.md`.
 
 **App icon**: nothing to upload. On the Mac it comes from the build (`build/icon.png`).
 
