@@ -4,7 +4,7 @@
  * Uses a running Fretlane with the bundled library. Writes appstore/screenshots/*.png.
  */
 import { chromium, type Page } from 'playwright';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 
 const BASE = process.argv[2] ?? 'http://localhost:5173';
 const OUT = new URL('../appstore/screenshots/', import.meta.url).pathname;
@@ -62,6 +62,26 @@ try {
   await page.waitForSelector('.song-card');
   await page.click('.view-bar [data-view="archive"]');
   await page.screenshot({ path: `${OUT}4-archive.png` });
+
+  // Standard notation above the tab.
+  await page.goto(`${BASE}/#/song/${byTitle('Für Elise').id}`);
+  await rendered(page);
+  await page.selectOption('select[title="Notation"]', { label: 'Score + Tab' });
+  // The old tab-only SVG is still on the page while alphaTab re-lays out, so wait for a standard staff.
+  await page.waitForFunction(() => document.querySelectorAll('.at-host svg').length > 0 && !!document.querySelector('.at-host')?.textContent?.includes('Melody') , undefined, { timeout: 20000 });
+  await page.waitForTimeout(3000);
+  await page.screenshot({ path: `${OUT}5-notation.png` });
+
+  // Importing your own tab: paste a plain-text tab (the original demo riff that ships with the app).
+  await page.goto(BASE);
+  await page.waitForSelector('.song-card');
+  await page.click('button.primary:has-text("Add song")');
+  await page.click('.song-dialog .segmented button:has-text("Paste text")');
+  const tab = readFileSync(new URL('../demo/night-trail.txt', import.meta.url), 'utf8');
+  await page.fill('.song-dialog textarea', tab);
+  await page.fill('.song-dialog input[name="title"]', 'Night Trail');
+  await page.fill('.song-dialog input[name="tags"]', 'riff, practice');
+  await page.screenshot({ path: `${OUT}6-add-song.png` });
 } finally {
   for (const s of favorites) await patch(s, { favorite: s.favorite });
   for (const s of done) await patch(s, { archived: !!s.archivedAt });

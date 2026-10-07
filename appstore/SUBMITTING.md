@@ -113,14 +113,9 @@ After about 15 minutes the build appears in App Store Connect under the version'
 
 ## 10. Submit for review
 
-Select the build, answer the export-compliance question (**No**: Fretlane uses only standard HTTPS),
-and in *App Review Information* paste:
-
-> Fretlane is a guitar tab player. Open any song in the library and press Play (or Space); the
-> built-in synthesizer plays it and the cursor follows the tab. Press M for the metronome. The
-> ☆ on a card adds a favorite and ✓ moves a song to the archive (see the tabs at the top).
-> Songs can optionally be linked to a YouTube video, which plays in YouTube's official embedded
-> player. No login is needed.
+Select the build, answer the export-compliance questions and fill in *App Review Information*
+(contact details, sign-in not required, and the review notes). The exact answers and text are in
+`appstore/LISTING.md` sections 7 and 8.
 
 Then **Add for Review → Submit**.
 

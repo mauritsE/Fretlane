@@ -6,7 +6,7 @@
 \tempo 104
 
 \track "Melody"
-\staff {tabs}
+\staff {score tabs}
 \tuning (e4 b3 g3 d3 a2 e2)
 \instrument acousticguitarnylon
 \ts (3 4) \ks eminor :2 2.3 :4 2.3 |
@@ -28,7 +28,7 @@
 :2 2.3{d}
 
 \track "Rhythm guitar"
-\staff {tabs}
+\staff {score tabs}
 \tuning (e4 b3 g3 d3 a2 e2)
 \instrument acousticguitarnylon
 :8 0.5{ch "Am"} 2.3 1.2 0.1 1.2 2.3 |
@@ -50,7 +50,7 @@
 :8 0.5{ch "Am"} 2.3 1.2 0.1 1.2 2.3
 
 \track "Bass"
-\staff {tabs}
+\staff {score tabs}
 \tuning (g2 d2 a1 e1)
 \instrument electricbassfinger
 :2 0.3{d} |

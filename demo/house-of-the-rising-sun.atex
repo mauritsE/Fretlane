@@ -6,7 +6,7 @@
 \tempo 66
 
 \track "Melody"
-\staff {tabs}
+\staff {score tabs}
 \tuning (e4 b3 g3 d3 a2 e2)
 \instrument acousticguitarsteel
 \ts (6 8) \ks aminor :8 0.5 2.3 1.2 0.1 1.2 2.3 |
@@ -44,7 +44,7 @@
 :2 (0.5 2.4 2.3 1.2 0.1){d}
 
 \track "Rhythm guitar"
-\staff {tabs}
+\staff {score tabs}
 \tuning (e4 b3 g3 d3 a2 e2)
 \instrument rockorgan
 :4 (0.5 2.4 2.3 1.2 0.1){d ch "Am"} (0.5 2.4 2.3 1.2 0.1){d} |
@@ -82,7 +82,7 @@
 :4 (0.5 2.4 2.3 1.2 0.1){d ch "Am"} (0.5 2.4 2.3 1.2 0.1){d}
 
 \track "Bass"
-\staff {tabs}
+\staff {score tabs}
 \tuning (g2 d2 a1 e1)
 \instrument electricbassfinger
 :4 0.3{d} 2.2{d} |

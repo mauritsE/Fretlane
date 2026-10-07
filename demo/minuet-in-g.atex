@@ -6,7 +6,7 @@
 \tempo 112
 
 \track "Melody"
-\staff {tabs}
+\staff {score tabs}
 \tuning (e4 b3 g3 d3 a2 e2)
 \instrument acousticguitarnylon
 \ts (3 4) \ks gmajor :4 3.2 :8 0.3 2.3 0.2 1.2 |
@@ -27,7 +27,7 @@
 :2 0.3{d}
 
 \track "Rhythm guitar"
-\staff {tabs}
+\staff {score tabs}
 \tuning (e4 b3 g3 d3 a2 e2)
 \instrument acousticguitarnylon
 :4 3.6{ch "G"} (0.3 0.2 3.1) (0.3 0.2 3.1) |
@@ -48,7 +48,7 @@
 :4 3.6{ch "G"} (0.3 0.2 3.1) (0.3 0.2 3.1)
 
 \track "Bass"
-\staff {tabs}
+\staff {score tabs}
 \tuning (g2 d2 a1 e1)
 \instrument electricbassfinger
 :2 3.4{d} |

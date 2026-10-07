@@ -6,7 +6,7 @@
 \tempo 76
 
 \track "Melody"
-\staff {tabs}
+\staff {score tabs}
 \tuning (e4 b3 g3 d3 a2 e2)
 \instrument acousticguitarnylon
 \ts (3 4) \ks eminor :8 (7.1 0.6){tu 3} 0.2{tu 3} 0.3{tu 3} 7.1{tu 3} 0.2{tu 3} 0.3{tu 3} 7.1{tu 3} 0.2{tu 3} 0.3{tu 3} |
