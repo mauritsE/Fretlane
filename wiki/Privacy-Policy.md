@@ -32,6 +32,8 @@ Each of these is contacted directly from your computer. The developer doesn't se
 | You import a tab **From URL** | The website at the address you entered | A normal download request for that address |
 | You click a link to a website (for example Help → Report a Problem) | That website, opened in your normal browser | Whatever your browser sends |
 
+If you log in to Spotify in its player, you log in with Spotify directly: Fretlane never sees your Spotify account or password.
+
 Songs without a YouTube or Spotify link never contact YouTube or Spotify, and the bundled songs play with a built-in synthesizer that works offline.
 
 YouTube's use of data is covered by [Google's privacy policy](https://policies.google.com/privacy). Spotify's use of data is covered by [Spotify's privacy policy](https://www.spotify.com/legal/privacy-policy/).

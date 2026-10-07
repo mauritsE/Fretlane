@@ -10,9 +10,9 @@ The repository already contains everything that can be prepared without an Apple
 | App Store build settings (sandbox, entitlements, installer) | `package.json` → `build.mas`, `build/entitlements.mas*.plist` |
 | CI that builds the App Store flavour and launches it **inside the App Sandbox** | `.github/workflows/app-store.yml`, job `sandbox` |
 | CI that signs the installer and uploads it to App Store Connect | same workflow, job `store` |
-| Listing text, keywords, privacy answers | `appstore/LISTING.md` |
+| Copy-paste text for every App Store Connect field (listing, age rating, privacy, export compliance, review notes) | `appstore/LISTING.md` |
 | Privacy policy, support and terms pages (linked from the listing) | `wiki/`, published to the GitHub wiki by `.github/workflows/wiki.yml` |
-| Screenshots, 2880×1800 | `appstore/screenshots/` |
+| Screenshots, 2880×1800 (6, upload order in LISTING.md) | `appstore/screenshots/` |
 
 What only you can do: pay Apple, create the certificates, sort out the paid-app paperwork
 (step 6), press "Submit". Roughly an hour of clicking plus Apple's review (typically 1–3 days).

@@ -75,16 +75,6 @@ Result: **4+**. *Made for Kids*: leave unticked.
 
 | Field | Value |
 | --- | --- |
-| Name (30) | Fretlane |
-| Subtitle (30) | Guitar tabs that play along |
-| Primary category | Music |
-| Secondary category | Education |
-| Age rating | 4+ (no objectionable content; the app can show YouTube videos the user links, see "Web access" below) |
-| Price | €4.99, one-time (base country Netherlands; see step 6 of `SUBMITTING.md`). The source and GitHub downloads stay free. |
-| Copyright | 2026 Maurits Elzinga |
-| Support URL | https://github.com/mauritsE/Fretlane/wiki/Support |
-| Marketing URL | https://github.com/mauritsE/Fretlane |
-| Privacy Policy URL | https://github.com/mauritsE/Fretlane/wiki/Privacy-Policy |
 | Base country | Netherlands |
 | Price | €4.99 (Apple fills in other countries) |
 | Availability | All countries or regions |
@@ -100,8 +90,11 @@ agreement, tax and banking, and the Small Business Program.
 
 **Privacy Policy URL**
 ```
-https://github.com/mauritsE/Fretlane/blob/main/appstore/PRIVACY.md
+https://github.com/mauritsE/Fretlane/wiki/Privacy-Policy
 ```
+
+The wiki page is published from `wiki/Privacy-Policy.md` by `.github/workflows/wiki.yml`. Check it
+opens before you submit.
 
 **User Privacy Choices URL**: leave empty (nothing to opt out of).
 
@@ -110,7 +103,7 @@ https://github.com/mauritsE/Fretlane/blob/main/appstore/PRIVACY.md
 
 Why that's true: no analytics, no crash reporter, no account, no ads, no server of our own. The
 library is a folder inside the app's sandbox. YouTube and Spotify players load only for songs the
-user linked to a video or track, and their own privacy policies cover them (PRIVACY.md says so).
+user linked to a video or track, and their own privacy policies cover them (the privacy policy says so).
 
 ---
 
@@ -166,7 +159,7 @@ guitar,tabs,tablature,bass,drums,practice,metronome,chords,songbook,learn,lesson
 
 **Support URL**
 ```
-https://github.com/mauritsE/Fretlane/issues
+https://github.com/mauritsE/Fretlane/wiki/Support
 ```
 
 **Marketing URL**
@@ -266,4 +259,7 @@ Choose **Manually release this version**, so you decide the moment it goes live 
 
 ## 10. Business and legal (once per account)
 
-Choose **Data Not Collected**. Fretlane has no analytics, no account and no server of its own. Note for the questionnaire: when a user links a YouTube video, the video plays in YouTube's own embedded player, which is covered by Google's privacy policy, and Spotify tracks play in Spotify's embedded player (both mentioned in the [privacy policy](../wiki/Privacy-Policy.md)).
+- **EU trader status (Digital Services Act).** Selling a paid app means you are a **trader**. Apple
+  shows your address, phone and email on the EU product page. See `SUBMITTING.md` step 6.4.
+- **Accessibility Nutrition Labels.** Voluntary for now. Leave them empty until VoiceOver and the
+  other features have been tested in the app; don't claim support that hasn't been checked.
