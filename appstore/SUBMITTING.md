@@ -10,9 +10,9 @@ The repository already contains everything that can be prepared without an Apple
 | App Store build settings (sandbox, entitlements, installer) | `package.json` → `build.mas`, `build/entitlements.mas*.plist` |
 | CI that builds the App Store flavour and launches it **inside the App Sandbox** | `.github/workflows/app-store.yml`, job `sandbox` |
 | CI that signs the installer and uploads it to App Store Connect | same workflow, job `store` |
-| Listing text, keywords, privacy answers | `appstore/LISTING.md` |
+| Copy-paste text for every App Store Connect field (listing, age rating, privacy, export compliance, review notes) | `appstore/LISTING.md` |
 | Privacy policy (linked from the listing) | `appstore/PRIVACY.md` |
-| Screenshots, 2880×1800 | `appstore/screenshots/` |
+| Screenshots, 2880×1800 (6, upload order in LISTING.md) | `appstore/screenshots/` |
 
 What only you can do: pay Apple, create the certificates, sort out the paid-app paperwork
 (step 6), press "Submit". Roughly an hour of clicking plus Apple's review (typically 1–3 days).
@@ -113,14 +113,9 @@ After about 15 minutes the build appears in App Store Connect under the version'
 
 ## 10. Submit for review
 
-Select the build, answer the export-compliance question (**No**: Fretlane uses only standard HTTPS),
-and in *App Review Information* paste:
-
-> Fretlane is a guitar tab player. Open any song in the library and press Play (or Space); the
-> built-in synthesizer plays it and the cursor follows the tab. Press M for the metronome. The
-> ☆ on a card adds a favorite and ✓ moves a song to the archive (see the tabs at the top).
-> Songs can optionally be linked to a YouTube video, which plays in YouTube's official embedded
-> player. No login is needed.
+Select the build, answer the export-compliance questions and fill in *App Review Information*
+(contact details, sign-in not required, and the review notes). The exact answers and text are in
+`appstore/LISTING.md` sections 7 and 8.
 
 Then **Add for Review → Submit**.
 

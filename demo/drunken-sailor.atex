@@ -6,7 +6,7 @@
 \tempo 150
 
 \track "Melody"
-\staff {tabs}
+\staff {score tabs}
 \tuning (e4 b3 g3 d3 a2 e2)
 \instrument overdrivenguitar
 \ts (4 4) \ks dminor :4 2.3 :8 2.3 2.3 :4 2.3 :8 2.3 2.3 |
@@ -27,7 +27,7 @@
 :2 0.4 0.4
 
 \track "Rhythm guitar"
-\staff {tabs}
+\staff {score tabs}
 \tuning (e4 b3 g3 d3 a2 e2)
 \instrument overdrivenguitar
 :8 (5.5{pm} 7.4{pm}){ch "Dm"} (5.5{pm} 7.4{pm}) (5.5{pm} 7.4{pm}) (5.5{pm} 7.4{pm}) (5.5{pm} 7.4{pm}) (5.5{pm} 7.4{pm}) (5.5{pm} 7.4{pm}) (5.5{pm} 7.4{pm}) |
@@ -48,7 +48,7 @@
 :8 (5.5{pm} 7.4{pm}){ch "Dm"} (5.5{pm} 7.4{pm}) (5.5{pm} 7.4{pm}) (5.5{pm} 7.4{pm}) (5.5{pm} 7.4{pm}) (5.5{pm} 7.4{pm}) (5.5{pm} 7.4{pm}) (5.5{pm} 7.4{pm})
 
 \track "Bass"
-\staff {tabs}
+\staff {score tabs}
 \tuning (g2 d2 a1 e1)
 \instrument electricbassfinger
 :8 0.2 0.2 0.2 0.2 0.2 0.2 0.2 0.2 |
