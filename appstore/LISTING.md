@@ -90,8 +90,11 @@ agreement, tax and banking, and the Small Business Program.
 
 **Privacy Policy URL**
 ```
-https://github.com/mauritsE/Fretlane/blob/main/appstore/PRIVACY.md
+https://github.com/mauritsE/Fretlane/wiki/Privacy-Policy
 ```
+
+The wiki page is published from `wiki/Privacy-Policy.md` by `.github/workflows/wiki.yml`. Check it
+opens before you submit.
 
 **User Privacy Choices URL**: leave empty (nothing to opt out of).
 
@@ -100,7 +103,7 @@ https://github.com/mauritsE/Fretlane/blob/main/appstore/PRIVACY.md
 
 Why that's true: no analytics, no crash reporter, no account, no ads, no server of our own. The
 library is a folder inside the app's sandbox. YouTube and Spotify players load only for songs the
-user linked to a video or track, and their own privacy policies cover them (PRIVACY.md says so).
+user linked to a video or track, and their own privacy policies cover them (the privacy policy says so).
 
 ---
 
@@ -156,7 +159,7 @@ guitar,tabs,tablature,bass,drums,practice,metronome,chords,songbook,learn,lesson
 
 **Support URL**
 ```
-https://github.com/mauritsE/Fretlane/issues
+https://github.com/mauritsE/Fretlane/wiki/Support
 ```
 
 **Marketing URL**
