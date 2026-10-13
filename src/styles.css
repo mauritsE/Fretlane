@@ -257,6 +257,12 @@ body[data-view='player'] { overflow: hidden; }
 .sync-head { display: flex; align-items: center; justify-content: space-between; }
 .sync-head h3 { margin: 0; font-size: 15px; }
 .sync-panel .row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.sync-panel.with-waveform { width: min(440px, calc(100% - 32px)); }
+.waveform { display: flex; flex-direction: column; gap: 4px; margin: 4px 0 10px; }
+.waveform canvas { display: block; width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; cursor: crosshair; }
+.wave-detail { height: 96px; }
+.wave-overview { height: 28px; cursor: pointer; }
+.wave-bar { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); }
 .tap-info { background: color-mix(in srgb, var(--accent) 15%, transparent); border-radius: 6px; padding: 6px 8px; margin: 0; }
 .sync-table { border-collapse: collapse; width: 100%; }
 .sync-table th { text-align: left; color: var(--muted); font-weight: 500; font-size: 12px; }

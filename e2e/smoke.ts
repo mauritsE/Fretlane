@@ -292,6 +292,16 @@ const ytAfterClick = await page.evaluate(() => (window as any).__fakeYT.t);
 check(Math.abs(ytAfterClick - 2) < 0.1, `clicking bar 1 seeks the video to the pin (${ytAfterClick.toFixed(2)}s)`);
 await page.screenshot({ path: `${SHOTS}03-player-video-sync.png` });
 
+// Moving the paused video past the end of the tab (an outro) must not snap it back to bar 1.
+await page.evaluate(() => (window as any).__fakeYT.pauseVideo());
+await page.evaluate(() => (window as any).__fakeYT.seekTo(100));
+await page.waitForTimeout(400);
+const ytOutro = await page.evaluate(() => (window as any).__fakeYT.t as number);
+check(ytOutro === 100, `seeking the paused video past the end of the tab stays there (${ytOutro}s)`);
+await page.mouse.click(beatBox.x, beatBox.y);
+await page.waitForTimeout(300);
+check(Math.abs((await page.evaluate(() => (window as any).__fakeYT.t)) - 2) < 0.1, 'clicking a bar after that still seeks the video');
+
 // cleanup
 await api(`/api/songs/${song.id}`, { method: 'DELETE' });
 
@@ -342,6 +352,7 @@ await page.evaluate(() => (window as any).__fakeSP.seek(2));
 await page.waitForTimeout(100);
 await page.click('text=⇆ Sync');
 check((await page.locator('.sync-panel h3').textContent()) === 'Sync tab ⇆ track', 'sync panel talks about the track');
+check((await page.locator('.sync-panel .waveform').count()) === 0, 'no waveform for Spotify (its audio cannot be decoded)');
 await page.fill('.sync-panel input[type=number]', '1');
 await page.click('text=📌 Pin to track time');
 await page.waitForTimeout(600);
@@ -450,6 +461,65 @@ await audio('(a.currentTime = 2.5, 0)');
 await page.waitForTimeout(300);
 const auAfterPin = await page.evaluate(() => (window as any).fretlane.at.timePosition as number);
 check(Math.abs(auAfterPin - 1500) < 100, `with bar 1 pinned at 1.0s, audio 2.5s maps to tab ${Math.round(auAfterPin)}ms (expected ~1500)`);
+
+// ---------- the waveform for placing pins (decodes the same WAV: clicks every 0.5 s, 10 ms long) ----------
+await page.waitForSelector('.sync-panel .waveform[data-state=ready]', { timeout: 10000 });
+check(true, 'the sync panel shows a waveform for an audio file');
+const view = async () => page.evaluate(() => {
+  const w = document.querySelector('.waveform') as HTMLElement;
+  return { from: Number(w.dataset.from), to: Number(w.dataset.to) };
+});
+// Colour of the detail canvas at a time (seconds) and height (-1 bottom … 1 top).
+const pixelAt = (t: number, y: number) =>
+  page.evaluate(([t, y]) => {
+    const w = document.querySelector('.waveform') as HTMLElement;
+    const c = w.querySelector('canvas.wave-detail') as HTMLCanvasElement;
+    const from = Number(w.dataset.from), to = Number(w.dataset.to);
+    const x = Math.round(((t - from) / (to - from)) * c.width);
+    const py = Math.round((c.height / 2) * (1 - y));
+    return Array.from(c.getContext('2d')!.getImageData(x, py, 1, 1).data);
+  }, [t, y] as const);
+const clickWave = async (t: number, opts: { alt?: boolean; canvas?: string } = {}) => {
+  const canvas = page.locator(opts.canvas ?? 'canvas.wave-detail');
+  const box = (await canvas.boundingBox())!;
+  const { from, to } = opts.canvas ? { from: 0, to: 20 } : await view();
+  await canvas.click({ position: { x: ((t - from) / (to - from)) * box.width, y: box.height / 2 }, modifiers: opts.alt ? ['Alt'] : [] });
+  await page.waitForTimeout(250);
+};
+await page.waitForTimeout(100);
+const v0 = await view();
+check(Math.abs(v0.from - 0.5) < 0.01 && Math.abs(v0.to - 4.5) < 0.01, `a 4 s window is centred on the playhead at 2.5 s (${v0.from}–${v0.to})`);
+const isAccent = (p: number[]) => p[0] > 200 && p[1] > 140 && p[1] < 210 && p[2] < 110;
+const isPlayhead = (p: number[]) => p[0] > 200 && p[1] < 120 && p[2] < 120;
+const isWave = (p: number[]) => p[3] > 0 && !isAccent(p) && !isPlayhead(p);
+check(isWave(await pixelAt(1.505, 0.3)) && isWave(await pixelAt(2.005, -0.3)), 'the clicks in the recording are drawn as peaks');
+check((await pixelAt(1.25, 0.3))[3] === 0, 'silence between the clicks is drawn flat');
+check(isAccent(await pixelAt(1.0, 0.9)), 'the pin on bar 1 (1.0 s) is drawn on the waveform');
+check(isPlayhead(await pixelAt(2.5, 0.9)), 'the playhead is drawn at the current time');
+
+await clickWave(3.03);
+const snapped = (await audio('a.currentTime')) as number;
+check(Math.abs(snapped - 3.0) < 0.006, `clicking just after a note snaps to its attack (clicked 3.03 s, moved to ${snapped.toFixed(3)} s)`);
+await page.fill('.sync-panel input[type=number]', '3');
+await page.click('text=📌 Pin to recording time');
+await page.waitForTimeout(600);
+const wavePins = (await api<{ syncPoints: { bar: number; time: number }[] }>(`/api/songs/${auSong.id}`)).syncPoints;
+check(wavePins.length === 2 && wavePins[1].bar === 2 && Math.abs(wavePins[1].time - 3.0) < 0.006, `bar 3 pinned on the attack from the waveform (${JSON.stringify(wavePins)})`);
+
+await clickWave(3.53, { alt: true });
+const exact = (await audio('a.currentTime')) as number;
+check(Math.abs(exact - 3.53) < 0.03, `Alt-click moves to the exact spot without snapping (${exact.toFixed(3)} s)`);
+await clickWave(3.27);
+check(Math.abs(((await audio('a.currentTime')) as number) - 3.27) < 0.03, 'a click in silence (no note nearby) stays where it was clicked');
+
+await clickWave(10, { canvas: 'canvas.wave-overview' });
+const jumped = (await audio('a.currentTime')) as number;
+check(Math.abs(jumped - 10) < 0.2, `clicking the overview jumps through the song (${jumped.toFixed(2)} s)`);
+await page.click('.waveform button[data-zoom=in]');
+await page.waitForTimeout(100);
+const v1 = await view();
+check(Math.abs(v1.to - v1.from - 2) < 0.01 && Math.abs(v1.from - 9) < 0.05, `zoom in shows 2 s around the playhead (${v1.from}–${v1.to})`);
+await page.click('.waveform button[data-zoom=out]');
 await page.screenshot({ path: `${SHOTS}08-player-audio.png` });
 
 // The edit dialog shows the file; removing it and pasting a link replaces the recording.

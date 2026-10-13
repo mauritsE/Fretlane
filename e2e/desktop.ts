@@ -93,8 +93,11 @@ if (mp3) {
   });
   check(au.err === 0 && au.t > 0.8, `the MP3 plays in the desktop app (at ${au.t.toFixed(2)}s)`);
   check(Math.abs(au.at - au.t * 1000) < 150, `the tab follows the MP3 (tab ${Math.round(au.at)}ms vs audio ${Math.round(au.t * 1000)}ms)`);
-  await win.screenshot({ path: `${SHOTS}12-desktop-audio.png` });
   await win.click('button.play');
+  await win.click('text=⇆ Sync');
+  const wave = await win.waitForSelector('.waveform[data-state=ready], .waveform[data-state=error]', { timeout: 10000 }).then((el) => el.getAttribute('data-state'));
+  check(wave === 'ready', `the MP3 is decoded for the sync waveform (${wave})`);
+  await win.screenshot({ path: `${SHOTS}12-desktop-audio.png` });
 }
 
 // External links must not navigate the app window away.
