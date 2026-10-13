@@ -12,8 +12,9 @@ Run these in order and stop at the first failure:
 3. Start the app in the background: `npm run dev > <scratchpad>/dev.log 2>&1 &`, then give it a few seconds.
 4. `npm run e2e` runs a Playwright smoke test against http://localhost:5173. It covers the library, synth playback, track switching, the ASCII import, the YouTube and Spotify bridges, sync pins, speed and click-to-seek.
 5. Production path: `npm run build`, then `FRETLANE_PORT=5180 FRETLANE_LIBRARY=<scratchpad>/lib npx tsx server/index.ts --serve-dist &` and `npm run e2e -- http://localhost:5180`.
-6. Desktop app: `npm run build:desktop && xvfb-run -a npx tsx e2e/desktop.ts` drives the real Electron window.
-7. Look at the screenshots in `e2e/screenshots/` with the Read tool. Passing asserts do not prove the UI looks right.
+6. Fretlane Cloud: `npm run e2e:cloud` (needs `npm run build`) runs its own server against a fake website + fake Supabase and drives sign-in, the cloud list, import and sign-out. The real site and Supabase are not reachable from sandboxes; say so when reporting.
+7. Desktop app: `npm run build:desktop && xvfb-run -a npx tsx e2e/desktop.ts` drives the real Electron window.
+8. Look at the screenshots in `e2e/screenshots/` with the Read tool. Passing asserts do not prove the UI looks right.
 
 ## Environment gotchas (learned the hard way)
 - **YouTube is often blocked in sandboxes.** The e2e test routes `https://www.youtube.com/iframe_api` to a fake `window.YT` with a simulated clock (`window.__fakeYT`). This tests *our* bridge, not YouTube itself. Say so when reporting: real-video playback needs a manual check on a normal network.

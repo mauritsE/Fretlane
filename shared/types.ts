@@ -33,6 +33,8 @@ export interface Song {
   favorite: boolean;
   /** When the user marked the song as done and moved it to the archive; null while active. */
   archivedAt: string | null;
+  /** Id of the Fretlane Cloud tab this song was imported from, when it came from the cloud. */
+  cloudId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -48,6 +50,9 @@ export interface NewSongInput {
   tabUrl?: string;
   tabText?: string;
   tabFile?: { name: string; dataBase64: string };
+  syncPoints?: SyncPoint[];
+  /** Set when the tab comes from Fretlane Cloud. */
+  cloudId?: string;
 }
 
 export type SongPatch = Partial<Pick<Song, 'title' | 'artist' | 'youtubeId' | 'syncPoints' | 'defaultTrack' | 'tags' | 'favorite'>> & {

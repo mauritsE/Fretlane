@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import type { NewSongInput, Song, SongPatch, TabFormat } from '../shared/types.ts';
+import type { NewSongInput, Song, SongPatch, SyncPoint, TabFormat } from '../shared/types.ts';
 import { detectTabFormat, parseMediaLink, parseYouTubeId, slugify } from '../shared/util.ts';
 import { asciiTabToAlphaTex } from '../shared/asciiTab.ts';
 import { normalizeSyncPoints } from '../shared/sync.ts';
@@ -91,6 +91,10 @@ export class Library {
     return this.songs.find((s) => s.id === id);
   }
 
+  findByCloudId(cloudId: string): Song | undefined {
+    return this.songs.find((s) => s.cloudId === cloudId);
+  }
+
   tabPath(song: Song): string {
     return path.join(this.tabsDir, song.tabFile);
   }
@@ -138,11 +142,12 @@ export class Library {
       tabFile,
       tabFormat: format,
       tabSource: input.tabUrl ?? input.tabFile?.name ?? 'pasted text',
-      syncPoints: [],
+      syncPoints: normalizeSyncPoints(cleanSyncPoints(input.syncPoints ?? [])),
       defaultTrack: 0,
       tags: input.tags ?? [],
       favorite: false,
       archivedAt: null,
+      ...(input.cloudId ? { cloudId: String(input.cloudId) } : {}),
       createdAt: now,
       updatedAt: now,
     };
@@ -170,9 +175,7 @@ export class Library {
       else if (!song.archivedAt) song.archivedAt = new Date().toISOString();
     }
     if (patch.syncPoints !== undefined) {
-      song.syncPoints = normalizeSyncPoints(
-        patch.syncPoints.map((p) => ({ bar: Math.max(0, Math.floor(Number(p.bar))), time: Math.max(0, Number(p.time)) })),
-      );
+      song.syncPoints = normalizeSyncPoints(cleanSyncPoints(patch.syncPoints));
     }
     song.updatedAt = new Date().toISOString();
     await this.persist();
@@ -221,6 +224,10 @@ export class HttpError extends Error {
   ) {
     super(message);
   }
+}
+
+function cleanSyncPoints(points: SyncPoint[]): SyncPoint[] {
+  return points.map((p) => ({ bar: Math.max(0, Math.floor(Number(p.bar))), time: Math.max(0, Number(p.time)) }));
 }
 
 function stripExt(name: string): string {

@@ -4,8 +4,10 @@ import path from 'node:path';
 import { HttpError, Library, type SeedSource } from './library.ts';
 import { fetchTab } from './fetchTab.ts';
 import { MediaSearch } from './mediaSearch.ts';
+import { FretlaneCloud } from './cloud.ts';
+import { cloudTabToSongInput, summarizeCloudTab, type CloudConfig } from '../shared/cloud.ts';
 import type { NewSongInput, SongPatch } from '../shared/types.ts';
-import { APP_ID } from '../shared/brand.ts';
+import { APP_ID, APP_NAME } from '../shared/brand.ts';
 
 const MAX_BODY = 30 * 1024 * 1024;
 
@@ -54,6 +56,8 @@ export interface ServerOptions {
   /** Serve the UI too. Omit in dev mode, where Vite serves it. */
   assets?: StaticAssets;
   seed?: string | SeedSource;
+  /** Fretlane Cloud endpoints; defaults to the real service (or FRETLANE_CLOUD_* overrides). */
+  cloud?: CloudConfig;
 }
 
 export interface RunningServer {
@@ -68,6 +72,8 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
   await library.init(opts.seed);
   const mediaSearch = new MediaSearch(opts.libraryDir);
   await mediaSearch.init();
+  const cloud = new FretlaneCloud(opts.libraryDir, opts.cloud);
+  await cloud.init();
 
   async function readJson<T>(req: http.IncomingMessage): Promise<T> {
     const chunks: Buffer[] = [];
@@ -144,9 +150,53 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
       }
     }
 
+    if (parts[1] === 'cloud') return handleCloud(req, res, url, parts.slice(2), method);
+
     // `app` lets tools (and the smoke test) recognise this server.
     if (parts[1] === 'health') return send(res, 200, { ok: true, app: APP_ID, library: opts.libraryDir });
     throw new HttpError(404, 'Unknown API route');
+  }
+
+  async function handleCloud(req: http.IncomingMessage, res: http.ServerResponse, url: URL, parts: string[], method: string): Promise<void> {
+    const [what, id, action] = parts;
+    if (what === 'status' && method === 'GET') return send(res, 200, cloud.status());
+    if (what === 'login' && method === 'POST') {
+      // The UI tells us the origin it was loaded from; the browser comes back to that same server.
+      const { origin } = await readJson<{ origin?: string }>(req);
+      return send(res, 200, cloud.startLogin(`${origin ?? ''}/api/cloud/callback`));
+    }
+    if (what === 'callback' && method === 'GET') {
+      // Opened in the user's web browser by the website, not by the app: answer with a page.
+      const error = url.searchParams.get('error');
+      try {
+        if (error) throw new HttpError(400, error);
+        const status = await cloud.finishLogin(url.searchParams.get('state') ?? '', url.searchParams.get('token_hash') ?? '');
+        return sendPage(res, 200, 'Signed in', `${APP_NAME} is connected to Fretlane Cloud${status.email ? ` as ${status.email}` : ''}. You can close this tab and go back to ${APP_NAME}.`);
+      } catch (err) {
+        return sendPage(res, err instanceof HttpError ? err.status : 500, 'Sign-in failed', (err as Error).message);
+      }
+    }
+    if (what === 'logout' && method === 'POST') return send(res, 200, await cloud.logout());
+    if (what === 'tabs' && !id && method === 'GET') {
+      const rows = await cloud.listTabs();
+      return send(res, 200, rows.map((r) => summarizeCloudTab(r, library.findByCloudId(r.id)?.id ?? null)));
+    }
+    if (what === 'tabs' && id && action === 'import' && method === 'POST') {
+      const tabId = decodeURIComponent(id);
+      const existing = library.findByCloudId(tabId);
+      if (existing) return send(res, 200, existing);
+      const row = await cloud.getTab(tabId);
+      return send(res, 201, await library.add(cloudTabToSongInput(row, await cloud.downloadTab(row))));
+    }
+    throw new HttpError(404, 'Unknown API route');
+  }
+
+  function sendPage(res: http.ServerResponse, status: number, title: string, message: string): void {
+    const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+    res.writeHead(status, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' });
+    res.end(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${esc(title)} · ${esc(APP_NAME)}</title>
+<style>body{font:16px/1.5 system-ui,sans-serif;background:#16181d;color:#e6e8ee;display:grid;place-items:center;min-height:90vh;margin:0 16px}main{max-width:32em;text-align:center}h1{font-size:1.4em}</style>
+<main><h1>${esc(title)}</h1><p>${esc(message)}</p></main>`);
   }
 
   async function serveStatic(res: http.ServerResponse, url: URL, assets: StaticAssets): Promise<void> {
