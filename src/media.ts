@@ -1,4 +1,4 @@
-/** What the player page needs from a recording the tab plays along with (YouTube or Spotify). */
+/** What the player page needs from a recording the tab plays along with (YouTube, Spotify or an audio file). */
 export type MediaState = 'playing' | 'paused' | 'ended' | 'other';
 
 export interface MediaEvents {
@@ -6,12 +6,14 @@ export interface MediaEvents {
   onError?: (message: string) => void;
 }
 
-export type MediaKind = 'youtube' | 'spotify';
+export type MediaKind = 'youtube' | 'spotify' | 'audio';
 
 export const MEDIA_KINDS: Record<MediaKind, { label: string; noun: string; rates: number[] }> = {
   youtube: { label: 'YouTube', noun: 'video', rates: [0.25, 0.5, 0.75, 1, 1.25, 1.5] },
   // The Spotify embed has no speed control.
   spotify: { label: 'Spotify', noun: 'track', rates: [1] },
+  // The browser time-stretches without changing the pitch, so slowing down works like YouTube's.
+  audio: { label: 'Audio file', noun: 'recording', rates: [0.25, 0.5, 0.6, 0.7, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5] },
 };
 
 export interface MediaPlayer {

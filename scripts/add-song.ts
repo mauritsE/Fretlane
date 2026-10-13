@@ -1,9 +1,10 @@
 /**
  * Add a song to a running Fretlane (npm run dev / npm start) from the command line.
  *
- *   npm run add-song -- <tab file or URL> [--title "..."] [--artist "..."] [--youtube <url> | --spotify <url>] [--tags a,b]
+ *   npm run add-song -- <tab file or URL> [--title "..."] [--artist "..."] [--youtube <url> | --spotify <url> | --audio <file>] [--tags a,b]
  *   npm run add-song -- ./tabs/my-song.gp5 --youtube https://youtu.be/XXXXXXXXXXX --tags rock
  *   npm run add-song -- ./tabs/my-song.gp5 --spotify https://open.spotify.com/track/XXXXXXXXXXXXXXXXXXXXXX
+ *   npm run add-song -- ./tabs/my-song.gp5 --audio ./recordings/my-song.mp3
  *
  * Env: FRETLANE_URL (default http://localhost:5173)
  */
@@ -29,9 +30,14 @@ const input: NewSongInput = {
   media: opt('spotify'),
   tags: opt('tags')?.split(',').map((t) => t.trim()).filter(Boolean),
 };
+const audio = opt('audio');
+if (audio && !existsSync(audio)) {
+  console.error(`No such audio file: ${audio}`);
+  process.exit(1);
+}
 const source = args[0];
 if (!source) {
-  console.error('Usage: npm run add-song -- <tab file or URL> [--title T] [--artist A] [--youtube URL | --spotify URL] [--tags a,b]');
+  console.error('Usage: npm run add-song -- <tab file or URL> [--title T] [--artist A] [--youtube URL | --spotify URL | --audio FILE] [--tags a,b]');
   process.exit(1);
 }
 if (/^https?:\/\//.test(source)) input.tabUrl = source;
@@ -43,9 +49,19 @@ else {
 
 try {
   const res = await fetch(`${BASE}/api/songs`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input) });
-  const body = (await res.json()) as Song & { error?: string };
+  let body = (await res.json()) as Song & { error?: string };
   if (!res.ok) throw new Error(body.error ?? res.statusText);
-  console.log(`Added "${body.title}" by ${body.artist} [${body.tabFormat}]${body.youtubeId ? ` with video ${body.youtubeId}` : body.spotifyId ? ` with Spotify track ${body.spotifyId}` : ''}`);
+  if (audio) {
+    const up = await fetch(`${BASE}/api/songs/${encodeURIComponent(body.id)}/audio`, {
+      method: 'PUT',
+      headers: { 'x-file-name': encodeURIComponent(path.basename(audio)) },
+      body: new Uint8Array(readFileSync(audio)),
+    });
+    const upBody = (await up.json()) as Song & { error?: string };
+    if (!up.ok) throw new Error(`the song was added, but not its audio file: ${upBody.error ?? up.statusText}`);
+    body = upBody;
+  }
+  console.log(`Added "${body.title}" by ${body.artist} [${body.tabFormat}]${body.youtubeId ? ` with video ${body.youtubeId}` : body.spotifyId ? ` with Spotify track ${body.spotifyId}` : body.audioFile ? ` with audio file ${body.audioName}` : ''}`);
   console.log(`Open: ${BASE}/#/song/${encodeURIComponent(body.id)}`);
 } catch (err) {
   const msg = (err as Error).message;

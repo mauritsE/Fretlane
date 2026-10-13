@@ -14,8 +14,15 @@ export interface Song {
   artist: string;
   /** 11-character YouTube video id, or empty when the song has no video. */
   youtubeId: string;
-  /** 22-character Spotify track id, or empty. A song has a YouTube video or a Spotify track, not both. */
+  /**
+   * 22-character Spotify track id, or empty. A song has at most one recording (a YouTube video, a
+   * Spotify track or an audio file), because sync pins belong to one recording.
+   */
   spotifyId: string;
+  /** File name of the user's own recording inside library/audio (e.g. an MP3 or WAV), or empty. */
+  audioFile: string;
+  /** The audio file's original name, for display. */
+  audioName: string;
   /** File name of the stored tab inside library/tabs. */
   tabFile: string;
   tabFormat: TabFormat;
@@ -52,7 +59,10 @@ export interface NewSongInput {
 
 export type SongPatch = Partial<Pick<Song, 'title' | 'artist' | 'youtubeId' | 'syncPoints' | 'defaultTrack' | 'tags' | 'favorite'>> & {
   youtube?: string;
-  /** A YouTube or Spotify link; it replaces the song's recording, and an empty string removes it. */
+  /**
+   * A YouTube or Spotify link; it replaces the song's recording (an audio file too), and an empty
+   * string removes it. Audio files are uploaded with PUT /api/songs/:id/audio instead.
+   */
   media?: string;
   /** true moves the song to the archive (marks it done), false restores it. */
   archived?: boolean;

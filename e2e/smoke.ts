@@ -80,6 +80,29 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T;
 }
 
+/** A mono 16-bit WAV with a short click every half second. */
+function clickTrackWav(seconds: number, rate = 22050): Buffer {
+  const n = Math.round(seconds * rate);
+  const b = Buffer.alloc(44 + n * 2);
+  b.write('RIFF', 0);
+  b.writeUInt32LE(36 + n * 2, 4);
+  b.write('WAVEfmt ', 8);
+  b.writeUInt32LE(16, 16);
+  b.writeUInt16LE(1, 20);
+  b.writeUInt16LE(1, 22);
+  b.writeUInt32LE(rate, 24);
+  b.writeUInt32LE(rate * 2, 28);
+  b.writeUInt16LE(2, 32);
+  b.writeUInt16LE(16, 34);
+  b.write('data', 36);
+  b.writeUInt32LE(n * 2, 40);
+  for (let i = 0; i < n; i++) {
+    const inClick = i % (rate / 2) < rate * 0.01;
+    b.writeInt16LE(inClick ? Math.round(12000 * Math.sin((2 * Math.PI * 1000 * i) / rate)) : 0, 44 + i * 2);
+  }
+  return b;
+}
+
 async function waitRendered(page: Page): Promise<void> {
   await page.waitForSelector('.at-surface svg, .at-surface-svg, .at-host svg', { timeout: 20000 });
   await page.waitForSelector('.at-overlay.hidden', { state: 'attached', timeout: 20000 });
@@ -353,6 +376,95 @@ check(fromBar2.sp > expectStart + 0.5 && fromBar2.sp < expectStart + 1.8, `first
 await page.evaluate(() => (window as any).__fakeSP.pause());
 
 await api(`/api/songs/${spSong.id}`, { method: 'DELETE' });
+
+// ---------- a song that plays along with the user's own audio file ----------
+// A real WAV in the real <audio> element: unlike YouTube and Spotify, nothing here is faked.
+await page.goto(`${BASE}/#/`);
+await page.click('button:has-text("+ Add song")');
+await page.click('dialog.song-dialog .segmented button:has-text("Paste text")');
+await page.fill('dialog.song-dialog textarea', 'e|--0--3--|--5--7--|--0--3--|--5--7--|--0--3--|--5--7--|\nB|--1-----|--------|--1-----|--------|--1-----|--------|\nG|--------|--------|--------|--------|--------|--------|\nD|--------|--------|--------|--------|--------|--------|\nA|--------|--------|--------|--------|--------|--------|\nE|--------|--------|--------|--------|--------|--------|\n');
+await page.fill('input[name=title]', 'E2E Audio Song');
+await page.fill('input[name=artist]', 'Test');
+await page.setInputFiles('#song-audio', { name: 'my band - take 3.wav', mimeType: 'audio/wav', buffer: clickTrackWav(20) });
+check((await page.locator('.audio-chip-name').textContent()) === '🎵 my band - take 3.wav', 'the dialog shows the chosen audio file');
+check(await page.locator('#song-recording').isDisabled(), 'the link field is disabled while an audio file is chosen');
+await page.screenshot({ path: `${SHOTS}07-add-audio-file.png` });
+await page.click('dialog.song-dialog button[type=submit]');
+await page.waitForSelector('.song-card[data-title="E2E Audio Song"] .badge.audio');
+check(true, 'library card shows the Audio badge');
+const auSong = (await api<{ id: string; title: string; audioFile: string; audioName: string; youtubeId: string }[]>('/api/songs')).find((s) => s.title === 'E2E Audio Song')!;
+check(auSong.audioFile === `${auSong.id}.wav` && auSong.audioName === 'my band - take 3.wav' && !auSong.youtubeId, `audio file stored with the song (${auSong.audioFile})`);
+
+const ranged = await fetch(`${BASE}/api/songs/${auSong.id}/audio`, { headers: { range: 'bytes=100-199' } });
+check(ranged.status === 206 && ranged.headers.get('content-range') === `bytes 100-199/${clickTrackWav(20).length}` && (await ranged.arrayBuffer()).byteLength === 100, 'audio is served with byte ranges (needed to seek)');
+
+await page.goto(`${BASE}/#/song/${auSong.id}`);
+await waitRendered(page);
+await page.waitForFunction(() => ((document.querySelector('.video-box audio') as HTMLAudioElement | null)?.duration ?? 0) > 19);
+check((await page.locator('.video-toolbar span').first().textContent()) === 'Audio file', 'panel is labelled Audio file');
+check(!(await page.locator('footer select[title="Playback speed"]').isDisabled()), 'speed can be changed for an audio file');
+const audio = (fn: string) => page.evaluate(`(() => { const a = document.querySelector('.video-box audio'); return ${fn}; })()`);
+
+await page.click('button.play');
+await page.waitForTimeout(1500);
+const au1 = (await audio('({ t: a.currentTime, paused: a.paused, at: window.fretlane.at.timePosition })')) as { t: number; paused: boolean; at: number };
+check(!au1.paused && au1.t > 0.8, `alphaTab play() started the audio file (at ${au1.t.toFixed(2)}s)`);
+check(Math.abs(au1.at - au1.t * 1000) < 150, `tab time follows the audio (tab ${Math.round(au1.at)}ms vs audio ${Math.round(au1.t * 1000)}ms)`);
+
+await page.selectOption('footer select[title="Playback speed"]', '0.5');
+await page.waitForTimeout(200);
+const r0 = (await audio('({ rate: a.playbackRate, pitch: a.preservesPitch, t: a.currentTime })')) as { rate: number; pitch: boolean; t: number };
+await page.waitForTimeout(1000);
+const r1 = (await audio('a.currentTime')) as number;
+check(r0.rate === 0.5 && r0.pitch, 'speed 50% slows the audio down (pitch preserved)');
+check(r1 - r0.t > 0.35 && r1 - r0.t < 0.7, `audio advances at half speed (${(r1 - r0.t).toFixed(2)}s in 1s)`);
+
+await audio('a.pause()');
+await page.waitForTimeout(200);
+check((await page.evaluate(() => (window as any).fretlane.at.playerState)) === 0, 'pausing the audio pauses the tab');
+
+// Clicking a bar seeks the audio: needs range requests to work.
+await page.selectOption('footer select[title="Playback speed"]', '1');
+const bar3 = await page.evaluate(() => {
+  const at = (window as any).fretlane.at;
+  const b = at.boundsLookup.staffSystems[0].bars[2].bars[0].beats[0].visualBounds;
+  const r = document.querySelector('.at-host')!.getBoundingClientRect();
+  return { x: r.left + b.x + b.w / 2, y: r.top + b.y + b.h / 2 };
+});
+await page.mouse.click(bar3.x, bar3.y);
+await page.waitForTimeout(300);
+const seek = (await audio('({ t: a.currentTime, at: window.fretlane.at.timePosition })')) as { t: number; at: number };
+check(seek.at > 500 && Math.abs(seek.t * 1000 - seek.at) < 100, `clicking bar 3 seeks the audio (audio ${seek.t.toFixed(2)}s, tab ${Math.round(seek.at)}ms)`);
+
+// Pin bar 1 to 1.0 s.
+await audio('(a.currentTime = 1, 0)');
+await page.waitForTimeout(200);
+await page.click('text=⇆ Sync');
+check((await page.locator('.sync-panel h3').textContent()) === 'Sync tab ⇆ recording', 'sync panel talks about the recording');
+await page.fill('.sync-panel input[type=number]', '1');
+await page.click('text=📌 Pin to recording time');
+await page.waitForTimeout(600);
+const auPinned = await api<{ syncPoints: { bar: number; time: number }[] }>(`/api/songs/${auSong.id}`);
+check(auPinned.syncPoints.length === 1 && Math.abs(auPinned.syncPoints[0].time - 1) < 0.05, `audio sync pin saved (${JSON.stringify(auPinned.syncPoints)})`);
+await audio('(a.currentTime = 2.5, 0)');
+await page.waitForTimeout(300);
+const auAfterPin = await page.evaluate(() => (window as any).fretlane.at.timePosition as number);
+check(Math.abs(auAfterPin - 1500) < 100, `with bar 1 pinned at 1.0s, audio 2.5s maps to tab ${Math.round(auAfterPin)}ms (expected ~1500)`);
+await page.screenshot({ path: `${SHOTS}08-player-audio.png` });
+
+// The edit dialog shows the file; removing it and pasting a link replaces the recording.
+await page.click('header button:has-text("Edit")');
+check((await page.locator('.audio-chip-name').textContent()) === '🎵 my band - take 3.wav', 'the edit dialog shows the current audio file');
+await page.click('.audio-chip button:has-text("Remove")');
+await page.fill('#song-recording', 'https://youtu.be/dQw4w9WgXcQ');
+await Promise.all([page.waitForEvent('load'), page.click('dialog.song-dialog button[type=submit]')]);
+const auLinked = await api<{ audioFile: string; youtubeId: string }>(`/api/songs/${auSong.id}`);
+check(auLinked.audioFile === '' && auLinked.youtubeId === 'dQw4w9WgXcQ', 'replacing the audio file with a YouTube link removes the file');
+check((await fetch(`${BASE}/api/songs/${auSong.id}/audio`)).status === 404, 'the old audio file is gone');
+
+const notAudio = await fetch(`${BASE}/api/songs/${auSong.id}/audio`, { method: 'PUT', body: '%PDF-1.7 definitely not audio', headers: { 'x-file-name': 'fake.mp3' } });
+check(notAudio.status === 415, `uploading a non-audio file is refused (${notAudio.status})`);
+await api(`/api/songs/${auSong.id}`, { method: 'DELETE' });
 
 // ---------- find a recording from the song dialog ----------
 // The real server answers Spotify (no credentials here, so it asks for them without going online).

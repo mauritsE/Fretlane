@@ -1,6 +1,6 @@
 ---
 name: fretlane-add-song
-description: Add songs to the Fretlane library (tab file, tab URL or pasted ASCII tab, plus optional YouTube video or Spotify track) and set up tab-to-video sync pins. Use when the user wants to import/add a song or tab, link a YouTube video or Spotify track to a song, fix a song whose cursor is out of sync, or bulk-import a folder of tabs.
+description: Add songs to the Fretlane library (tab file, tab URL or pasted ASCII tab, plus optional YouTube video, Spotify track or the user's own audio file) and set up tab-to-video sync pins. Use when the user wants to import/add a song or tab, link a YouTube video, Spotify track or MP3/WAV file to a song, fix a song whose cursor is out of sync, or bulk-import a folder of tabs.
 ---
 
 # Adding songs to Fretlane
@@ -8,11 +8,12 @@ description: Add songs to the Fretlane library (tab file, tab URL or pasted ASCI
 The app must be running (`npm run dev` or `npm start`); both expose the API at `http://localhost:5173/api`.
 
 ## Pick the route
-- **One file or URL:** `npm run add-song -- <file|url> [--title T] [--artist A] [--youtube URL | --spotify URL] [--tags a,b]`
+- **One file or URL:** `npm run add-song -- <file|url> [--title T] [--artist A] [--youtube URL | --spotify URL | --audio FILE] [--tags a,b]`
 - **Bulk folder:** loop over files with the same command, e.g.
   `for f in ~/Tabs/*.gp*; do npm run add-song -- "$f" --tags imported; done`
 - **Pasted text or alphaTex:** `POST /api/songs` with `{"tabText": "...", "title": "...", "artist": "...", "media": "<YouTube or Spotify link>"}`
 - **Find a recording:** `GET /api/search?source=youtube|spotify&q=<artist title>` returns ranked `{results:[{url,title,artist,duration,...}], error?, openUrl}`; put the chosen `url` in `media`. Spotify needs credentials (`PUT /api/settings` with `spotifyClientId`, `spotifyClientSecret`). Check the top result's title and duration before trusting it.
+- **The user's own recording (MP3, WAV, FLAC, OGG/Opus, M4A/AAC, WebM):** `PUT /api/songs/:id/audio` with the raw file as the body and `x-file-name: <url-encoded name>`. It replaces a YouTube/Spotify link; a later `media` patch (even `""`) deletes the file. The format is detected from the bytes, so anything else gets 415. Max 300 MB.
 - **Edit metadata or video later:** `PATCH /api/songs/:id` with any of `title, artist, media (YouTube or Spotify link; empty removes it), tags, defaultTrack, syncPoints`
 
 Supported tabs: Guitar Pro 3-8, MusicXML/.mxl, alphaTex, plain-text ASCII tabs. Format is detected from the extension first, then from content (`shared/util.ts#detectTabFormat`). ASCII tabs are converted to alphaTex **on import**, so the stored file is always playable.

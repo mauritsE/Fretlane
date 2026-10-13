@@ -1,11 +1,12 @@
 # Fretlane 🎸
 
-An open-source, local-first tab player in the spirit of Songsterr. Load a tab from anywhere, link a YouTube video or Spotify track, and play along. The tab cursor follows the recording.
+An open-source, local-first tab player in the spirit of Songsterr. Load a tab from anywhere, link a YouTube video or Spotify track or add your own MP3/WAV, and play along. The tab cursor follows the recording.
 
 - **Tabs from anywhere:** Guitar Pro 3–8 (`.gp3/.gp4/.gp5/.gpx/.gp`), MusicXML (`.xml/.musicxml/.mxl`), [alphaTex](https://alphatab.net/docs/alphatex/introduction), and plain-text ASCII tabs. You can upload a file, give a URL (the local server downloads it, so there are no CORS problems), or paste text.
 - **Plays along with YouTube:** the video is the clock. Play, pause, seek, speed and looping on either the tab or the video stay in sync.
 - **Finds the recording for you:** click **🔍 Find** next to the Recording field (or type words there and press Enter) to search YouTube or Spotify for the artist and title. Results are ranked so the studio recording comes first; covers, lessons, live versions and full-album uploads sink unless you searched for them, because their timing differs from the record. YouTube search needs no account but uses YouTube's own, unofficial search endpoint, so it can break when YouTube changes it; the dialog then links to the same search on youtube.com. Spotify search uses Spotify's official Web API and needs a free Spotify developer app once (the dialog walks you through it; the Client ID and secret stay in `settings.json` in your library folder, or set `FRETLANE_SPOTIFY_CLIENT_ID` / `FRETLANE_SPOTIFY_CLIENT_SECRET`).
 - **…or with Spotify:** paste a Spotify track link instead. Play, pause, seek, looping and sync pins work the same way. Spotify's embed can't change speed, so Spotify songs play at 100%. You need to be logged in to Spotify in the browser to hear full tracks; otherwise Spotify plays a 30-second preview. In the desktop app expect previews only (untested: Electron lacks the DRM module Spotify uses for full tracks, and its login popup opens in your normal browser). Apple Music isn't supported: controlling it needs a paid Apple developer token.
+- **…or with your own audio file:** click **🎵 Audio file** in the song dialog to play along with an MP3, WAV, FLAC, OGG/Opus, M4A/AAC or WebM file, such as your band's rehearsal recording, a backing track, or a song you bought. The file is copied into `library/audio/` and never leaves your machine. It works offline, slows down without changing the pitch (25–150%), and seeks exactly. Sync pins work as with a video. Files up to 300 MB.
 - **Sync editor:** pin bars to moments in the video. One pin sets the start. More pins let the tab follow tempo drift in a live recording. You can also press **T** on every downbeat to tap the song in.
 - **22 songs out of the box:** a songbook of well-known public-domain tunes (Greensleeves, House of the Rising Sun, Für Elise, Canon in D, Romanza, In the Hall of the Mountain King, Drunken Sailor…), arranged for melody guitar, rhythm guitar, bass and drums, marked beginner or intermediate.
 - **Library:** search, tags, ★ favorites (listed first, with their own view) and an **archive** for songs you've learned (✓ Mark as done, ↺ to restore). Everything is stored as plain files in `library/`.
@@ -47,13 +48,14 @@ On first start the library is seeded with three small **original** demo tabs and
 
 ## Adding songs
 
-**In the app:** click **+ Add song**, choose *Upload file*, *From URL* or *Paste text*, and optionally paste a YouTube or Spotify track link, or click **🔍 Find** to search for one.
+**In the app:** click **+ Add song**, choose *Upload file*, *From URL* or *Paste text*, and optionally paste a YouTube or Spotify track link, click **🔍 Find** to search for one, or click **🎵 Audio file** to use your own recording.
 
 **From the command line** (while the app is running):
 
 ```bash
 npm run add-song -- ~/Tabs/my-song.gp5 --youtube https://youtu.be/XXXXXXXXXXX --tags rock,practice
 npm run add-song -- ~/Tabs/my-song.gp5 --spotify https://open.spotify.com/track/XXXXXXXXXXXXXXXXXXXXXX
+npm run add-song -- ~/Tabs/my-song.gp5 --audio ~/Music/my-band-take-3.mp3
 npm run add-song -- https://example.com/some-tab.gp --title "Song" --artist "Band"
 ```
 
@@ -118,9 +120,9 @@ Project layout:
 
 ```
 server/    Node HTTP server: library storage (JSON + files), tab download, static hosting
-shared/    Pure TS used by both sides: types, YouTube/Spotify link parsing, format detection, ASCII→alphaTex, sync maths,
+shared/    Pure TS used by both sides: types, YouTube/Spotify link parsing, tab and audio format detection, ASCII→alphaTex, sync maths,
            metronome timing, and the songbook generator (guitar fingering, chord shapes, band parts)
-src/       Browser app (vanilla TS + Vite): library view, player view, YouTube/Spotify bridge
+src/       Browser app (vanilla TS + Vite): library view, player view, YouTube/Spotify/audio-file bridge
 demo/      Tabs seeded into the library: original demos + the generated songbook
 songbook/  The songbook as data (note names + chord symbols); npm run build-songbook writes demo/*.atex
 appstore/  Mac App Store listing, screenshots and submission guide

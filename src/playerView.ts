@@ -7,6 +7,7 @@ import { formatTime, h, toast } from './dom.ts';
 import { openSongDialog } from './libraryView.ts';
 import { YouTubeVideo } from './youtube.ts';
 import { SpotifyTrack } from './spotify.ts';
+import { AudioFilePlayer } from './audioFile.ts';
 import { MEDIA_KINDS, type MediaKind, type MediaPlayer, type MediaState } from './media.ts';
 import { metronomeButton, setMetronomeSongContext } from './metronome.ts';
 
@@ -26,8 +27,8 @@ export async function renderPlayer(root: HTMLElement, songId: string): Promise<C
     return () => {};
   }
 
-  // The recording the tab follows. "video" names below cover a Spotify track too.
-  const mediaKind: MediaKind | null = song.youtubeId ? 'youtube' : song.spotifyId ? 'spotify' : null;
+  // The recording the tab follows. "video" names below cover a Spotify track and an audio file too.
+  const mediaKind: MediaKind | null = song.youtubeId ? 'youtube' : song.spotifyId ? 'spotify' : song.audioFile ? 'audio' : null;
   const media = mediaKind ? MEDIA_KINDS[mediaKind] : null;
   const noun = media?.noun ?? 'video';
   const useVideo = !!mediaKind;
@@ -146,8 +147,8 @@ export async function renderPlayer(root: HTMLElement, songId: string): Promise<C
         'button',
         {
           onclick: () =>
-            openSongDialog(song, async (s) => {
-              const videoChanged = s.youtubeId !== song.youtubeId || s.spotifyId !== song.spotifyId;
+            openSongDialog(song, async (s, { audioUploaded }) => {
+              const videoChanged = audioUploaded || s.youtubeId !== song.youtubeId || s.spotifyId !== song.spotifyId || s.audioFile !== song.audioFile;
               song = s;
               titleEl.replaceChildren(h('strong', {}, s.title), h('span', {}, ` — ${s.artist}`));
               if (videoChanged) location.reload();
@@ -229,7 +230,7 @@ export async function renderPlayer(root: HTMLElement, songId: string): Promise<C
   at.playedBeatChanged.on((beat) => setCurrentBar(beat.voice.bar.masterBar.index));
   at.beatMouseDown.on((beat) => setCurrentBar(beat.voice.bar.masterBar.index));
 
-  // ---------- YouTube/Spotify <-> alphaTab bridge ----------
+  // ---------- YouTube/Spotify/audio file <-> alphaTab bridge ----------
   if (mediaKind && media) {
     try {
       const events = {
@@ -244,10 +245,12 @@ export async function renderPlayer(root: HTMLElement, songId: string): Promise<C
       video =
         mediaKind === 'youtube'
           ? await YouTubeVideo.create(videoBox, song.youtubeId, events)
-          : await SpotifyTrack.create(videoBox, song.spotifyId, {
-              ...events,
-              onPreview: () => toast('Spotify is playing a 30-second preview. Log in to Spotify in this browser to hear the full track.'),
-            });
+          : mediaKind === 'audio'
+            ? await AudioFilePlayer.create(videoBox, api.audioUrl(song), song.audioName, events)
+            : await SpotifyTrack.create(videoBox, song.spotifyId, {
+                ...events,
+                onPreview: () => toast('Spotify is playing a 30-second preview. Log in to Spotify in this browser to hear the full track.'),
+              });
       cleanups.push(() => video?.destroy());
       const v = video;
       const handler: alphaTab.synth.IExternalMediaHandler = {

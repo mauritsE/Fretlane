@@ -2,11 +2,13 @@
  * Drives the real desktop app window (Electron) with Playwright:
  *   npm run build && npm run build:desktop && xvfb-run -a npx tsx e2e/desktop.ts
  *
- * Covers: window opens with the library, a song renders and plays, the app keeps one instance,
- * and a pre-rename ~/Songstarr library is moved to ~/Fretlane on first launch.
+ * Covers: window opens with the library, a song renders and plays, an MP3 plays along (needs ffmpeg
+ * to make one), the app keeps one instance, and a pre-rename ~/Songstarr library is moved to
+ * ~/Fretlane on first launch.
  */
 import { _electron as electron } from 'playwright';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -68,6 +70,32 @@ await win.waitForTimeout(2000);
 const pos = await win.evaluate(() => (window as unknown as { fretlane: { at: { timePosition: number } } }).fretlane.at.timePosition);
 check(pos > 300, `playback runs in the desktop window (${Math.round(pos)}ms)`);
 await win.screenshot({ path: `${SHOTS}11-desktop-player.png` });
+
+// An MP3 the user added plays along: Electron ships the MP3/AAC decoders that Playwright's Chromium may lack.
+await win.click('button.play'); // pause the synth
+let mp3: Buffer | null = null;
+try {
+  mp3 = execFileSync('ffmpeg', ['-loglevel', 'error', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=10', '-f', 'mp3', '-'], { maxBuffer: 10e6 });
+} catch {
+  console.log('SKIP  MP3 playback in the desktop app (ffmpeg is not installed)');
+}
+if (mp3) {
+  const up = await fetch('http://localhost:5210/api/songs/legacy-song/audio', { method: 'PUT', body: new Uint8Array(mp3), headers: { 'x-file-name': 'take.mp3' } });
+  check(up.ok && ((await up.json()) as { audioFile: string }).audioFile === 'legacy-song.mp3', 'an MP3 can be added to a song');
+  await win.reload();
+  await win.waitForSelector('.at-host svg', { timeout: 20000 });
+  await win.waitForFunction(() => ((document.querySelector('.video-box audio') as HTMLAudioElement | null)?.duration ?? 0) > 9, undefined, { timeout: 10000 });
+  await win.click('button.play');
+  await win.waitForTimeout(1500);
+  const au = await win.evaluate(() => {
+    const a = document.querySelector('.video-box audio') as HTMLAudioElement;
+    return { t: a.currentTime, at: (window as unknown as { fretlane: { at: { timePosition: number } } }).fretlane.at.timePosition, err: a.error?.code ?? 0 };
+  });
+  check(au.err === 0 && au.t > 0.8, `the MP3 plays in the desktop app (at ${au.t.toFixed(2)}s)`);
+  check(Math.abs(au.at - au.t * 1000) < 150, `the tab follows the MP3 (tab ${Math.round(au.at)}ms vs audio ${Math.round(au.t * 1000)}ms)`);
+  await win.screenshot({ path: `${SHOTS}12-desktop-audio.png` });
+  await win.click('button.play');
+}
 
 // External links must not navigate the app window away.
 await win.evaluate(() => {
