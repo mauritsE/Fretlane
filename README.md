@@ -110,7 +110,7 @@ Packages land in `release/out/`:
 
 To publish, bump `version` in `package.json`. Then either push a tag (`git tag v0.2.0 && git push origin v0.2.0`), or open **Actions → Release → Run workflow** on `main` with **publish** ticked. The workflow builds on real Linux, macOS and Windows machines and launches every build (on Windows, through a silent install). It publishes the GitHub Release only if they all start, using `release/RELEASE_NOTES.md` as the text.
 
-**Mac App Store:** `.github/workflows/app-store.yml` builds the sandboxed App Store flavour and launches it inside the App Sandbox on every relevant PR. With Apple certificates in the repository secrets it also signs the installer and uploads it to App Store Connect. `appstore/SUBMITTING.md` walks through the Apple side step by step; the listing, privacy policy and screenshots are in `appstore/`.
+**Mac App Store:** `.github/workflows/app-store.yml` builds the sandboxed App Store flavour and launches it inside the App Sandbox on every relevant PR. With Apple certificates in the repository secrets it also signs the installer and uploads it to App Store Connect. `appstore/SUBMITTING.md` walks through the Apple side step by step; the listing and screenshots are in `appstore/`.
 
 To rename the app, change `shared/brand.ts` and `productName` / `appId` in `package.json`.
 
@@ -123,7 +123,8 @@ shared/    Pure TS used by both sides: types, YouTube/Spotify link parsing, form
 src/       Browser app (vanilla TS + Vite): library view, player view, YouTube/Spotify bridge
 demo/      Tabs seeded into the library: original demos + the generated songbook
 songbook/  The songbook as data (note names + chord symbols); npm run build-songbook writes demo/*.atex
-appstore/  Mac App Store listing, privacy policy, screenshots and submission guide
+appstore/  Mac App Store listing, screenshots and submission guide
+wiki/      GitHub wiki pages (privacy policy, terms, support, FAQ); .github/workflows/wiki.yml publishes them
 tests/     vitest suites
 e2e/       Playwright smoke test (replaces YouTube and Spotify with fake players so it runs offline)
 scripts/   CLI helpers (add-song, validate-tab)
@@ -142,6 +143,10 @@ Rendering and playback are done by [alphaTab](https://alphatab.net) (MPL-2.0). M
 ## Support Fretlane
 
 Fretlane is free and open source. If it helps you learn songs and you'd like to say thanks, you can [buy me a coffee on Ko-fi](https://ko-fi.com/mauritselzinga). The Mac App Store version costs a few euros: buying it supports development and gets you a signed app that installs and updates in one click. The source code and the downloads here stay free. Bug reports and ideas are just as welcome.
+
+## Help, privacy and terms
+
+See the [wiki](https://github.com/mauritsE/Fretlane/wiki): [Support](https://github.com/mauritsE/Fretlane/wiki/Support), [FAQ and troubleshooting](https://github.com/mauritsE/Fretlane/wiki/FAQ-and-Troubleshooting), [Privacy policy](https://github.com/mauritsE/Fretlane/wiki/Privacy-Policy), [Terms of use](https://github.com/mauritsE/Fretlane/wiki/Terms-of-Use) and [Copyright and tabs](https://github.com/mauritsE/Fretlane/wiki/Copyright-and-Tabs). The pages are edited in `wiki/` in this repository.
 
 ## License
 

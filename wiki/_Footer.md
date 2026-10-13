@@ -1,0 +1,1 @@
+Fretlane is free and open source (MIT). [Privacy](Privacy-Policy) · [Terms](Terms-of-Use) · [Support](Support) · Edits to this wiki are made in the [`wiki/` folder of the repository](https://github.com/mauritsE/Fretlane/tree/main/wiki).

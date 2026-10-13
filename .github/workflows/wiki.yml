@@ -1,0 +1,54 @@
+# Publishes wiki/*.md to the repository's GitHub wiki (Home, Privacy-Policy, Support, …).
+# The wiki pages are edited here, in the repo, and this workflow copies them over on every push to main.
+#
+# One-time setup: GitHub only creates the wiki's git repository after its first page is saved.
+# Settings → General → Features → tick "Wikis", then open the Wiki tab, click "Create the first page"
+# and save it with any text. This workflow then replaces it with wiki/Home.md.
+name: Wiki
+
+on:
+  push:
+    branches: [main]
+    paths: ['wiki/**', '.github/workflows/wiki.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wiki
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Clone the wiki
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if ! git clone --depth 1 "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.wiki.git" wiki-repo; then
+            echo "::error::Could not clone the wiki. Enable Wikis in the repository settings and save a first page once (see the top of .github/workflows/wiki.yml)."
+            exit 1
+          fi
+
+      - name: Copy the pages
+        run: |
+          # Mirror wiki/ exactly, so pages removed here disappear from the wiki too.
+          find wiki-repo -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -R wiki/. wiki-repo/
+
+      - name: Push
+        working-directory: wiki-repo
+        run: |
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Wiki already up to date."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Sync wiki from ${GITHUB_REPOSITORY}@${GITHUB_SHA::7}"
+          git push
