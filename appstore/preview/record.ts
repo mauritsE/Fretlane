@@ -1,15 +1,19 @@
 /**
  * Records the real app for the Mac App Store preview (15-30 s, 1920x1080, app footage only).
- *   npx tsx appstore/preview/record.ts http://localhost:5183
+ *   npm run build   then   npx tsx appstore/preview/record.ts
  * Writes marketing/work/preview/frames/*.jpg, frames.json and marks.json; build.py cuts it.
  * The pointer, the speaker tap and the helpers are the YouTube recorder's (marketing/youtube/record.ts).
  * Only bundled public-domain songs and an original riff appear: no YouTube or Spotify footage, which
- * Apple's preview rules would count as third-party content. Needs a fresh library.
+ * Apple's preview rules would count as third-party content. Runs its own Fretlane on a fresh library
+ * (appstore/demo-env.ts). The audio file in the play-along shot is a song rendered by Fretlane's own
+ * synthesizer.
  */
 import { chromium } from 'playwright';
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { renderSongWav, startDemo } from '../demo-env.ts';
 
-const BASE = process.argv[2] ?? 'http://localhost:5183';
+const demo = await startDemo();
+const BASE = demo.base;
 const DIR = new URL('../../marketing/work/preview/', import.meta.url).pathname;
 rmSync(DIR, { recursive: true, force: true });
 mkdirSync(`${DIR}frames`, { recursive: true });
@@ -60,6 +64,14 @@ const AUDIO_TAP = `
     }
     return r;
   };
+  // <audio> elements (the play-along file) bypass Web Audio, so route them through a context too.
+  addEventListener('play', (e) => {
+    const el = e.target;
+    if (!(el instanceof HTMLAudioElement) || el.__tapped) return;
+    el.__tapped = true;
+    const ctx = new AudioContext();
+    ctx.createMediaElementSource(el).connect(ctx.destination);
+  }, true);
   window.__stopAudioTaps = async () => Promise.all(window.__audioTaps.map((t) => new Promise((resolve) => {
     t.rec.onstop = async () => {
       const buf = new Uint8Array(await new Blob(t.chunks).arrayBuffer());
@@ -143,6 +155,18 @@ async function openSong(title: string): Promise<void> {
 }
 
 
+// One song plays along with an audio file: the song rendered by the app's own synthesizer.
+const songs = (await (await fetch(`${BASE}/api/songs`)).json()) as { id: string; title: string }[];
+const rising = songs.find((s) => s.title === 'House of the Rising Sun')!;
+{
+  const render = await browser.newPage();
+  const wav = await renderSongWav(render, BASE, rising.id);
+  await render.close();
+  const put = await fetch(`${BASE}/api/songs/${rising.id}/audio`, { method: 'PUT', headers: { 'x-file-name': encodeURIComponent('House of the Rising Sun.wav') }, body: new Uint8Array(wav) });
+  if (!put.ok) throw new Error(`audio upload failed: ${put.status}`);
+  await fetch(`${BASE}/api/songs/${rising.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ syncPoints: [{ bar: 0, time: 1 }] }) });
+}
+
 await page.goto(BASE);
 await page.waitForSelector('.song-card');
 await page.mouse.move(mouse.x, mouse.y);
@@ -206,8 +230,24 @@ for (let i = 0; i < 20; i++) {
 if (!seen.some((v, i) => i > 2 && v < seen[i - 1])) throw new Error(`loop did not repeat: ${seen.join(',')}`);
 console.log('loop bars', seen.join(','));
 await pause();
+await click('footer select[title="Playback speed"]', { pause: 150 });
+await page.selectOption('footer select[title="Playback speed"]', '1');
+await page.keyboard.press('Escape');
 
-// 4. Paste a plain-text tab (an original riff) and hear it.
+// 4. Play along with an audio file, the waveform open for placing sync pins.
+await click('.topbar a.back', { pause: 200 });
+await page.waitForSelector('.song-card');
+await openSong('House of the Rising Sun');
+await page.waitForFunction(() => ((document.querySelector('.video-box audio') as HTMLAudioElement | null)?.duration ?? 0) > 5);
+await click('button:has-text("⇆ Sync")', { pause: 200 });
+await page.waitForSelector('.sync-panel .waveform[data-state=ready]', { timeout: 20000 });
+await wait(500);
+mark('audio');
+await startPlaying();
+await wait(6000);
+await pause();
+
+// 5. Paste a plain-text tab (an original riff) and hear it.
 const RIFF = `e|-----------------|-----------------|-----------------|-----------------|
 B|-----------------|-----------------|-----------------|-----------------|
 G|-----------------|-----------------|-----------------|---------2-------|
@@ -248,4 +288,5 @@ const tracks = audio.map((t, i) => {
 writeFileSync(`${DIR}frames.json`, JSON.stringify(frames));
 writeFileSync(`${DIR}marks.json`, JSON.stringify({ marks, audio: tracks }, null, 2));
 await browser.close();
+await demo.close();
 console.log(`${frames.length} frames, ${(frames[frames.length - 1].t - frames[0].t).toFixed(1)} s, ${tracks.length} audio track(s)`);

@@ -1,13 +1,16 @@
 /**
  * Takes the Mac App Store screenshots (2880x1800, Apple's largest Mac size) from the real app:
- *   npm start  (or the dev server)   then   npx tsx scripts/appstore-screenshots.ts [baseUrl]
- * Uses a running Fretlane with the bundled library. Writes appstore/screenshots/*.png.
+ *   npm run build   then   npx tsx scripts/appstore-screenshots.ts
+ * Starts its own Fretlane on a fresh library (appstore/demo-env.ts), so your own library is never
+ * touched. Writes appstore/screenshots/*.png.
  */
 import { chromium, type Page } from 'playwright';
 import { existsSync, readFileSync } from 'node:fs';
+import { renderSongWav, startDemo } from '../appstore/demo-env.ts';
 
-const BASE = process.argv[2] ?? 'http://localhost:5173';
 const OUT = new URL('../appstore/screenshots/', import.meta.url).pathname;
+const demo = await startDemo();
+const BASE = demo.base;
 
 const executablePath = process.env.CHROMIUM_PATH ?? (existsSync('/opt/pw-browsers/chromium') ? '/opt/pw-browsers/chromium' : undefined);
 const browser = await chromium.launch({ executablePath, args: ['--autoplay-policy=no-user-gesture-required'] });
@@ -17,8 +20,6 @@ await page.route('https://i.ytimg.com/**', (r) => r.fulfill({ status: 404, body:
 interface Song {
   id: string;
   title: string;
-  favorite: boolean;
-  archivedAt: string | null;
 }
 const songs = (await (await fetch(`${BASE}/api/songs`)).json()) as Song[];
 const byTitle = (t: string) => songs.find((s) => s.title === t)!;
@@ -30,13 +31,17 @@ async function rendered(p: Page): Promise<void> {
   await p.waitForSelector('.at-overlay.hidden', { state: 'attached', timeout: 20000 });
 }
 
-// A lived-in library: a few favorites and a couple of finished songs.
-const favorites = ['Greensleeves', 'In the Hall of the Mountain King', 'House of the Rising Sun'].map(byTitle);
-const done = ['Twinkle Twinkle Little Star', 'Frère Jacques'].map(byTitle);
-for (const s of favorites) await patch(s, { favorite: true });
-for (const s of done) await patch(s, { archived: true });
-
 try {
+  // A lived-in library: a few favorites, a couple of finished songs, and one song with its own recording.
+  for (const t of ['Greensleeves', 'In the Hall of the Mountain King', 'House of the Rising Sun']) await patch(byTitle(t), { favorite: true });
+  for (const t of ['Twinkle Twinkle Little Star', 'Frère Jacques']) await patch(byTitle(t), { archived: true });
+  // The recording is the song rendered by Fretlane's own synthesizer, after a second of silence.
+  const rising = byTitle('House of the Rising Sun');
+  const wav = await renderSongWav(page, BASE, rising.id);
+  const put = await fetch(`${BASE}/api/songs/${rising.id}/audio`, { method: 'PUT', headers: { 'x-file-name': encodeURIComponent('House of the Rising Sun.wav') }, body: new Uint8Array(wav) });
+  if (!put.ok) throw new Error(`audio upload failed: ${put.status} ${await put.text()}`);
+  await patch(rising, { syncPoints: [{ bar: 0, time: 1 }] });
+
   await page.goto(BASE);
   await page.waitForSelector('.song-card');
   await page.screenshot({ path: `${OUT}1-library.png` });
@@ -82,9 +87,30 @@ try {
   await page.fill('.song-dialog input[name="title"]', 'Night Trail');
   await page.fill('.song-dialog input[name="tags"]', 'riff, practice');
   await page.screenshot({ path: `${OUT}6-add-song.png` });
+  await page.keyboard.press('Escape');
+
+  // Playing along with your own audio file, with the waveform in the sync panel.
+  await page.goto(`${BASE}/#/song/${rising.id}`);
+  await rendered(page);
+  await page.waitForFunction(() => ((document.querySelector('.video-box audio') as HTMLAudioElement | null)?.duration ?? 0) > 5);
+  await page.click('text=⇆ Sync');
+  await page.waitForSelector('.sync-panel .waveform[data-state=ready]', { timeout: 20000 });
+  await page.click('button.play');
+  await page.waitForTimeout(6000);
+  await page.click('button.play');
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: `${OUT}7-audio-file.png` });
+
+  // Fretlane Cloud: the demo account's tabs, one already in the library.
+  await demo.signIn();
+  await fetch(`${BASE}/api/cloud/tabs/d2/import`, { method: 'POST' });
+  await page.goto(BASE);
+  await page.waitForSelector('.song-card');
+  await page.click('button.cloud-button');
+  await page.waitForSelector('.cloud-tab');
+  await page.screenshot({ path: `${OUT}8-cloud.png` });
 } finally {
-  for (const s of favorites) await patch(s, { favorite: s.favorite });
-  for (const s of done) await patch(s, { archived: !!s.archivedAt });
   await browser.close();
+  await demo.close();
 }
 console.log(`Screenshots written to ${OUT}`);

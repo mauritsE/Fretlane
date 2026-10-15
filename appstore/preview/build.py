@@ -21,13 +21,14 @@ FADE = 0.35  # crossfade between shots
 
 # (from mark, offset, length, caption). Times are seconds of the raw take relative to a mark.
 SHOTS = [
-    ('library', 0.0, 2.4, 'Your tabs in one library'),
-    ('play', 0.0, 6.0, 'Play along with the whole band'),
-    ('tracks', 0.0, 3.8, 'Switch to any instrument'),
-    ('loop', 2.0, 4.0, 'Loop the hard part'),
-    ('loop-play', 0.0, 5.0, 'and slow it down'),
-    ('paste', 0.0, 3.6, 'Paste any plain-text tab'),
-    ('riff-playing', 0.0, 4.6, 'and hear it play'),
+    ('library', 0.0, 2.2, 'Your tabs in one library'),
+    ('play', 0.0, 5.0, 'Play along with the whole band'),
+    ('tracks', 0.0, 3.4, 'Switch to any instrument'),
+    ('loop', 2.0, 3.6, 'Loop the hard part'),
+    ('loop-play', 0.0, 4.2, 'and slow it down'),
+    ('audio', 0.3, 4.6, 'Play along with your own recordings'),
+    ('paste', 0.0, 3.4, 'Paste any plain-text tab'),
+    ('riff-playing', 0.0, 4.0, 'and hear it play'),
 ]
 
 
