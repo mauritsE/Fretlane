@@ -12,7 +12,7 @@ The repository already contains everything that can be prepared without an Apple
 | CI that signs the installer and uploads it to App Store Connect | same workflow, job `store` |
 | Copy-paste text for every App Store Connect field (listing, age rating, privacy, export compliance, review notes) | `appstore/LISTING.md` |
 | Privacy policy, support and terms pages (linked from the listing) | `wiki/`, published to the GitHub wiki by `.github/workflows/wiki.yml` |
-| Screenshots, 2880×1800 (6, upload order in LISTING.md) | `appstore/screenshots/` |
+| Screenshots, 2880×1800 (8, upload order in LISTING.md) and the App Preview video | `appstore/screenshots/`, `appstore/preview/` |
 
 What only you can do: pay Apple, create the certificates, sort out the paid-app paperwork
 (step 6), press "Submit". Roughly an hour of clicking plus Apple's review (typically 1–3 days).
