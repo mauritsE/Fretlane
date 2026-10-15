@@ -1,12 +1,14 @@
 # Privacy policy
 
-_Last updated: 5 October 2026_
+_Last updated: 13 October 2026_
 
 This policy covers the Fretlane desktop app (the GitHub downloads, the Mac App Store version, and the app run from source). Fretlane is made by Maurits Elzinga, who is responsible for the app as described here.
 
 ## In short
 
-Fretlane does not collect, store or share any personal data. There is no account, no analytics, no crash reporting, no ads, and no server run by the developer. Your library stays on your computer.
+Fretlane does not collect, store or share any personal data. You don't need an account, and there are no analytics, no crash reporting and no ads. Your library stays on your computer.
+
+The one exception is optional: if you sign in to **Fretlane Cloud** (the paid tab storage on the Fretlane website), the app talks to the developer's cloud service to list and download the tabs you stored there. See [Fretlane Cloud](#fretlane-cloud) below.
 
 Fretlane does contact a few third-party services, but only when you use a feature that needs them. Those are listed below.
 
@@ -14,9 +16,10 @@ Fretlane does contact a few third-party services, but only when you use a featur
 
 - **Your library:** songs, tab files, tags, favorites, the archive and sync pins are stored as plain files (`songs.json` plus the tab files) in the **Fretlane** folder in your home folder, or in the app's sandbox folder for the Mac App Store version.
 - **Settings:** metronome settings are kept in the app's local browser storage. If you set up Spotify search, your Spotify developer Client ID and Client secret are saved in `settings.json` in your library folder. They are only ever sent to Spotify, and the app never shows the secret again once saved.
+- **Fretlane Cloud sign-in:** if you sign in to Fretlane Cloud, the app keeps a sign-in token and your email address in `cloud.json` in your library folder, readable only by your user account. **Sign out** in the ☁ Cloud window deletes it.
 - **The local server:** Fretlane runs a small server inside the app that only listens on your own computer (`127.0.0.1`). Other devices on your network can't reach it.
 
-Nothing in this list is sent to the developer.
+Nothing in this list is sent to the developer, apart from the sign-in token, which goes to Fretlane Cloud when you use it.
 
 ## Third-party services Fretlane contacts
 
@@ -37,6 +40,15 @@ If you log in to Spotify in its player, you log in with Spotify directly: Fretla
 Songs without a YouTube or Spotify link never contact YouTube or Spotify, and the bundled songs play with a built-in synthesizer that works offline.
 
 YouTube's use of data is covered by [Google's privacy policy](https://policies.google.com/privacy). Spotify's use of data is covered by [Spotify's privacy policy](https://www.spotify.com/legal/privacy-policy/).
+
+## Fretlane Cloud
+
+Fretlane Cloud is optional and off until you click **☁ Cloud** and sign in. Signing in opens the Fretlane website in your browser, where you sign in with Google; the website's own privacy terms cover that. The app then contacts the Fretlane Cloud service (run by the developer on Lovable Cloud / Supabase) only when you open the ☁ Cloud window or add a cloud tab, and sends:
+
+- the sign-in token, to prove it is you;
+- requests for your list of cloud tabs and for the tab files you choose to add.
+
+The service only returns your own tabs. Tabs you add are copied into your local library; Fretlane does not upload anything from your local library to the cloud.
 
 ## Purchases
 

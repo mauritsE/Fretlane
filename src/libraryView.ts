@@ -5,6 +5,7 @@ import { APP_NAME } from '../shared/brand.ts';
 import { h, toast } from './dom.ts';
 import { metronomeButton } from './metronome.ts';
 import { mediaPicker } from './mediaPicker.ts';
+import { cloudButton } from './cloudView.ts';
 import { buildSearchQuery } from '../shared/mediaSearch.ts';
 import { AUDIO_ACCEPT, MAX_AUDIO_BYTES } from '../shared/audio.ts';
 
@@ -37,6 +38,7 @@ export async function renderLibrary(root: HTMLElement): Promise<void> {
       h('a.brand', { href: '#/' }, h('img.logo', { src: '/icon.svg', alt: '' }), APP_NAME),
       search,
       metronomeButton(),
+      cloudButton(),
       h('button.primary', { onclick: () => openSongDialog(null, reload) }, '+ Add song'),
     ),
     h('main.library', {}, viewBar, tagBar, list),

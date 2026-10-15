@@ -1,5 +1,6 @@
 import type { NewSongInput, Song, SongPatch } from '../shared/types.ts';
 import type { MediaSearchResponse, MediaSource, PublicSettings } from '../shared/mediaSearch.ts';
+import type { CloudStatus, CloudTabSummary } from '../shared/cloud.ts';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
@@ -30,6 +31,11 @@ export const api = {
   getSettings: () => request<PublicSettings>('/api/settings'),
   setSpotifyCredentials: (spotifyClientId: string, spotifyClientSecret: string) =>
     request<PublicSettings>('/api/settings', { method: 'PUT', body: JSON.stringify({ spotifyClientId, spotifyClientSecret }) }),
+  cloudStatus: () => request<CloudStatus>('/api/cloud/status'),
+  cloudLogin: (origin: string) => request<{ url: string }>('/api/cloud/login', { method: 'POST', body: JSON.stringify({ origin }) }),
+  cloudLogout: () => request<CloudStatus>('/api/cloud/logout', { method: 'POST' }),
+  cloudTabs: () => request<CloudTabSummary[]>('/api/cloud/tabs'),
+  importCloudTab: (id: string) => request<Song>(`/api/cloud/tabs/${encodeURIComponent(id)}/import`, { method: 'POST' }),
   /** Uploads the user's own recording (raw bytes, not JSON: WAV files are big). */
   async uploadAudio(id: string, file: File): Promise<Song> {
     const res = await fetch(`/api/songs/${encodeURIComponent(id)}/audio`, {

@@ -50,6 +50,8 @@ On first start the library is seeded with three small **original** demo tabs and
 
 **In the app:** click **+ Add song**, choose *Upload file*, *From URL* or *Paste text*, and optionally paste a YouTube or Spotify track link, click **🔍 Find** to search for one, or click **🎵 Audio file** to use your own recording.
 
+**From Fretlane Cloud:** if you store tabs on the [Fretlane website](https://fretlane-sync-magic.lovable.app) (Fretlane Cloud), click **☁ Cloud** in the library and sign in. Your browser opens the website; sign in with Google and approve this computer. Back in Fretlane you see your cloud tabs: **Add & open** downloads one into your local library, with its YouTube or Spotify link and its sync offset. Fretlane stays signed in until you click **Sign out**.
+
 **From the command line** (while the app is running):
 
 ```bash
@@ -84,6 +86,7 @@ Most tabs on the web are text like `e|---0---3---|`. Fretlane converts them to a
 | `FRETLANE_PORT` | `5174` (dev API) / `5173` (`npm start`) | Server port |
 | `FRETLANE_HOST` | `127.0.0.1` | Bind address. The server is meant to be local only |
 | `FRETLANE_URL` | `http://localhost:5173` | Used by `npm run add-song` |
+| `FRETLANE_CLOUD_SITE`, `FRETLANE_CLOUD_API`, `FRETLANE_CLOUD_KEY` | the Fretlane website and its Supabase project | Fretlane Cloud endpoints, for testing or self-hosting |
 
 Back up or sync your library by copying the `library/` folder.
 
@@ -93,6 +96,7 @@ Back up or sync your library by copying the `library/` folder.
 npm run typecheck
 npm test                 # unit + integration tests (vitest)
 npm run e2e              # browser smoke test against a running dev server (Playwright, fake YouTube and Spotify)
+npm run e2e:cloud        # Fretlane Cloud sign-in and import against a fake website + Supabase (after npm run build)
 npm run validate-tab -- demo/*.atex some.gp5   # parse tabs with alphaTab in Node and print a summary
 ```
 

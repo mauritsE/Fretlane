@@ -15,6 +15,7 @@
     "add-song": "tsx scripts/add-song.ts",
     "validate-tab": "tsx scripts/validate-tab.ts",
     "e2e": "tsx e2e/smoke.ts",
+    "e2e:cloud": "tsx e2e/cloud.ts",
     "build:desktop": "esbuild desktop/main.ts --bundle --platform=node --format=cjs --target=node22 --external:electron --outfile=desktop-dist/main.cjs",
     "desktop": "npm run build && npm run build:desktop && electron .",
     "dist:desktop": "npm run build && npm run build:desktop && node scripts/collect-licenses.mjs && electron-builder --publish never",
