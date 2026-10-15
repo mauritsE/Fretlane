@@ -111,6 +111,53 @@ describe('Library', () => {
     expect((await lib.add({ title: 'Y', tabText: ASCII, youtube: 'https://youtu.be/dQw4w9WgXcQ' })).spotifyId).toBe('');
   });
 
+  it('stores an uploaded audio file as the recording, replacing a link, and removes it with the song', async () => {
+    const lib = await fresh(false);
+    const song = await lib.add({ title: 'T', artist: 'A', tabText: ASCII, media: 'https://youtu.be/dQw4w9WgXcQ' });
+    await lib.update(song.id, { syncPoints: [{ bar: 0, time: 1.5 }] });
+    // Streamed in several chunks, like an HTTP request body.
+    const withAudio = await lib.setAudio(song.id, 'C:\\fakepath\\My Band - Take 3.wav', chunks(wav(0.1), 7));
+    expect(withAudio).toMatchObject({ youtubeId: '', spotifyId: '', audioFile: `${song.id}.wav`, audioName: 'My Band - Take 3.wav' });
+    expect(withAudio.syncPoints).toEqual([{ bar: 0, time: 1.5 }]); // pins are kept: often it is the same recording
+    const file = lib.audioPath(withAudio)!;
+    expect((await fs.readFile(file)).equals(Buffer.from(wav(0.1)))).toBe(true);
+
+    // A new upload replaces the old file, also when the format changes.
+    const mp3 = new Uint8Array([...Buffer.from('ID3'), 4, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3]);
+    const replaced = await lib.setAudio(song.id, 'take4.mp3', chunks(mp3, 64));
+    expect(replaced.audioFile).toBe(`${song.id}.mp3`);
+    await expect(fs.stat(file)).rejects.toThrow();
+    expect(await fs.readdir(path.join(root, 'audio'))).toEqual([`${song.id}.mp3`]); // no temp files left
+
+    // Linking a video instead removes the audio file.
+    const linked = await lib.update(song.id, { media: 'https://youtu.be/dQw4w9WgXcQ' });
+    expect(linked).toMatchObject({ youtubeId: 'dQw4w9WgXcQ', audioFile: '', audioName: '' });
+    expect(await fs.readdir(path.join(root, 'audio'))).toEqual([]);
+
+    await lib.setAudio(song.id, 'again.wav', chunks(wav(0.05), 1000));
+    await lib.remove(song.id);
+    expect(await fs.readdir(path.join(root, 'audio'))).toEqual([]);
+  });
+
+  it('rejects uploads that are not audio, and leaves the song as it was', async () => {
+    const lib = await fresh(false);
+    const song = await lib.add({ title: 'T', artist: 'A', tabText: ASCII, media: 'https://youtu.be/dQw4w9WgXcQ' });
+    await expect(lib.setAudio(song.id, 'song.mp3', chunks(new TextEncoder().encode('%PDF-1.7 not audio at all'), 8))).rejects.toMatchObject({ status: 415 });
+    await expect(lib.setAudio(song.id, 'empty.wav', chunks(new Uint8Array(), 1))).rejects.toMatchObject({ status: 400 });
+    await expect(lib.setAudio('nope', 'a.wav', chunks(wav(0.01), 8))).rejects.toMatchObject({ status: 404 });
+    expect(lib.get(song.id)).toMatchObject({ youtubeId: 'dQw4w9WgXcQ', audioFile: '' });
+    expect(await fs.readdir(path.join(root, 'audio'))).toEqual([]);
+  });
+
+  it('songs saved before audio files existed get empty audio fields', async () => {
+    await fs.mkdir(path.join(root, 'tabs'), { recursive: true });
+    const old = { id: 'x', title: 'Old', artist: 'A', youtubeId: '', tabFile: 'x.atex', tabFormat: 'alphatex', tabSource: '', syncPoints: [], defaultTrack: 0, tags: [], createdAt: '', updatedAt: '' };
+    await fs.writeFile(path.join(root, 'songs.json'), JSON.stringify([old]));
+    const lib = await fresh(false);
+    expect(lib.get('x')).toMatchObject({ audioFile: '', audioName: '', spotifyId: '' });
+    expect(lib.audioPath(lib.get('x')!)).toBeNull();
+  });
+
   it('add() converts pasted ASCII tab to alphatex', async () => {
     const lib = await fresh(false);
     const song = await lib.add({ title: 'My Riff', artist: 'Me', tabText: ASCII, youtube: 'https://youtu.be/dQw4w9WgXcQ?t=5', tags: ['x'] });
@@ -267,3 +314,26 @@ describe('Library', () => {
     await expect(new Library(root).init(SEED)).rejects.toThrow();
   });
 });
+
+/** A mono 16-bit PCM WAV of silence. */
+function wav(seconds: number, rate = 8000): Uint8Array {
+  const n = Math.round(seconds * rate);
+  const b = Buffer.alloc(44 + n * 2);
+  b.write('RIFF', 0);
+  b.writeUInt32LE(36 + n * 2, 4);
+  b.write('WAVEfmt ', 8);
+  b.writeUInt32LE(16, 16);
+  b.writeUInt16LE(1, 20);
+  b.writeUInt16LE(1, 22);
+  b.writeUInt32LE(rate, 24);
+  b.writeUInt32LE(rate * 2, 28);
+  b.writeUInt16LE(2, 32);
+  b.writeUInt16LE(16, 34);
+  b.write('data', 36);
+  b.writeUInt32LE(n * 2, 40);
+  return new Uint8Array(b);
+}
+
+async function* chunks(data: Uint8Array, size: number): AsyncIterable<Uint8Array> {
+  for (let i = 0; i < data.length; i += size) yield data.subarray(i, i + size);
+}

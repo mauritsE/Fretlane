@@ -1,11 +1,12 @@
 import http from 'node:http';
-import { promises as fs } from 'node:fs';
+import { createReadStream, promises as fs } from 'node:fs';
 import path from 'node:path';
 import { HttpError, Library, type SeedSource } from './library.ts';
 import { fetchTab } from './fetchTab.ts';
 import { MediaSearch } from './mediaSearch.ts';
 import type { NewSongInput, SongPatch } from '../shared/types.ts';
 import { APP_ID } from '../shared/brand.ts';
+import { audioFormatOfFile, audioMime, parseByteRange } from '../shared/audio.ts';
 
 const MAX_BODY = 30 * 1024 * 1024;
 
@@ -105,6 +106,17 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
         res.writeHead(200, { 'content-type': 'application/octet-stream', 'cache-control': 'no-cache' });
         res.end(data);
         return;
+      } else if (parts[3] === 'audio') {
+        if (method === 'PUT') {
+          const name = decodeURIComponent(String(req.headers['x-file-name'] ?? 'audio'));
+          return send(res, 200, await library.setAudio(id, name, req));
+        }
+        if (method === 'GET' || method === 'HEAD') {
+          const song = library.get(id);
+          const file = song && library.audioPath(song);
+          if (!file) throw new HttpError(404, 'This song has no audio file');
+          return sendFile(req, res, file, audioMime(audioFormatOfFile(file) ?? 'mp3'));
+        }
       } else if (!parts[3]) {
         if (method === 'GET') {
           const song = library.get(id);
@@ -147,6 +159,37 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
     // `app` lets tools (and the smoke test) recognise this server.
     if (parts[1] === 'health') return send(res, 200, { ok: true, app: APP_ID, library: opts.libraryDir });
     throw new HttpError(404, 'Unknown API route');
+  }
+
+  /** Sends a file with HTTP range support; `<audio>` needs ranges to seek. */
+  async function sendFile(req: http.IncomingMessage, res: http.ServerResponse, file: string, type: string): Promise<void> {
+    const { size } = await fs.stat(file);
+    const range = parseByteRange(req.headers.range, size);
+    const headers = { 'content-type': type, 'accept-ranges': 'bytes', 'cache-control': 'no-cache' };
+    if (range === 'unsatisfiable') {
+      res.writeHead(416, { ...headers, 'content-range': `bytes */${size}` });
+      res.end();
+      return;
+    }
+    const { start, end } = range ?? { start: 0, end: size - 1 };
+    res.writeHead(range ? 206 : 200, {
+      ...headers,
+      'content-length': String(end - start + 1),
+      ...(range ? { 'content-range': `bytes ${start}-${end}/${size}` } : {}),
+    });
+    if (req.method === 'HEAD' || size === 0) {
+      res.end();
+      return;
+    }
+    await new Promise<void>((resolve, reject) => {
+      const stream = createReadStream(file, { start, end });
+      stream.on('error', reject);
+      res.on('close', () => {
+        stream.destroy();
+        resolve();
+      });
+      stream.pipe(res);
+    });
   }
 
   async function serveStatic(res: http.ServerResponse, url: URL, assets: StaticAssets): Promise<void> {
