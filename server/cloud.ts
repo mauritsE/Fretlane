@@ -21,11 +21,14 @@ import {
   type CloudTabRow,
 } from '../shared/cloud.ts';
 import { HttpError } from './library.ts';
+import { decidePremium, entitlementFrom, type EntitlementCheck, type PremiumStatus, type SubscriptionRow } from '../shared/premium.ts';
 
 const TIMEOUT_MS = 15_000;
 /** How long a sign-in started in the app may take to come back. */
 const LOGIN_TTL_MS = 15 * 60_000;
 const MAX_TAB_BYTES = 20 * 1024 * 1024;
+/** How long a premium answer from the website is reused before asking again. */
+const PREMIUM_TTL_MS = 10 * 60_000;
 
 interface StoredSession {
   refreshToken: string;
@@ -57,6 +60,8 @@ export function cloudConfigFromEnv(): CloudConfig {
 
 export class FretlaneCloud {
   private readonly file: string;
+  private readonly premiumFile: string;
+  private premiumCache: { status: PremiumStatus; at: number } | null = null;
   private session: Session | null = null;
   private stored: StoredSession | null = null;
   private readonly pending = new Map<string, number>();
@@ -68,6 +73,7 @@ export class FretlaneCloud {
     private readonly fetchImpl: typeof fetch = fetch,
   ) {
     this.file = path.join(libraryDir, 'cloud.json');
+    this.premiumFile = path.join(libraryDir, 'premium.json');
   }
 
   async init(): Promise<void> {
@@ -108,7 +114,9 @@ export class FretlaneCloud {
     const session = this.session;
     this.session = null;
     this.stored = null;
+    this.premiumCache = null;
     await fs.rm(this.file, { force: true });
+    await fs.rm(this.premiumFile, { force: true });
     if (session) {
       // Best effort: revoke this app's session on the server too. Signing out locally already happened.
       await this.request(`${this.config.apiUrl}/auth/v1/logout?scope=local`, {
@@ -139,13 +147,68 @@ export class FretlaneCloud {
     return bytes;
   }
 
-  /** A signed-in GET against the cloud API. Refreshes the session once if the server rejects it. */
-  private async authed(apiPath: string): Promise<Response> {
+  /**
+   * Fretlane Premium (the tab editor): does the signed-in account have the Fretlane Cloud plan? Asks
+   * the website the way its own account page does: the user's newest `subscriptions` row (Stripe)
+   * and `my_kofi_membership()` (Ko-fi), both limited to the user by row-level security. Answers are
+   * reused for a few minutes; offline, the last stored answer counts for a grace period.
+   */
+  async premium(force = false): Promise<PremiumStatus> {
+    if (!force && this.premiumCache && Date.now() - this.premiumCache.at < PREMIUM_TTL_MS && this.premiumCache.status.email === (this.stored?.email ?? '')) {
+      return this.premiumCache.status;
+    }
+    const pricingUrl = new URL('/pricing', this.config.siteUrl).toString();
+    const stored = await this.readPremiumFile();
+    let fresh: EntitlementCheck | null = null;
+    if (this.stored) {
+      try {
+        const email = this.stored.email;
+        const [subs, kofi] = await Promise.all([
+          this.authed('/rest/v1/subscriptions?select=status,current_period_end&order=created_at.desc&limit=1'),
+          this.authed('/rest/v1/rpc/my_kofi_membership', { method: 'POST', body: '{}' }),
+        ]);
+        const rows = (await subs.json()) as SubscriptionRow[];
+        const kofiEnd = (await kofi.json()) as string | null;
+        fresh = entitlementFrom(email, rows[0] ?? null, typeof kofiEnd === 'string' ? kofiEnd : null);
+        await this.writePremiumFile(fresh);
+      } catch (err) {
+        // Signed out meanwhile (the refresh token stopped working): fall through to signed-out.
+        if (!(err instanceof HttpError) || (err.status !== 502 && err.status !== 401)) throw err;
+      }
+    }
+    const status = decidePremium({ signedIn: !!this.stored, email: this.stored?.email ?? '', fresh, stored, pricingUrl });
+    // Only cache what the website said; while offline, ask again next time.
+    this.premiumCache = fresh || !this.stored ? { status, at: Date.now() } : null;
+    return status;
+  }
+
+  private async readPremiumFile(): Promise<EntitlementCheck | null> {
+    try {
+      return JSON.parse(await fs.readFile(this.premiumFile, 'utf8')) as EntitlementCheck;
+    } catch {
+      return null;
+    }
+  }
+
+  private async writePremiumFile(check: EntitlementCheck): Promise<void> {
+    const tmp = `${this.premiumFile}.tmp`;
+    await fs.writeFile(tmp, JSON.stringify(check, null, 2), { mode: 0o600 });
+    await fs.rename(tmp, this.premiumFile);
+  }
+
+  /** A signed-in request against the cloud API. Refreshes the session once if the server rejects it. */
+  private async authed(apiPath: string, init: { method?: string; body?: string } = {}): Promise<Response> {
+    const send = (token: string) =>
+      this.request(this.config.apiUrl + apiPath, {
+        method: init.method ?? 'GET',
+        headers: { ...this.headers(token), ...(init.body !== undefined ? { 'content-type': 'application/json' } : {}) },
+        ...(init.body !== undefined ? { body: init.body } : {}),
+      });
     let session = await this.currentSession();
-    let res = await this.request(this.config.apiUrl + apiPath, { headers: this.headers(session.accessToken) });
+    let res = await send(session.accessToken);
     if (res.status === 401 || res.status === 403) {
       session = await this.refresh(session.refreshToken);
-      res = await this.request(this.config.apiUrl + apiPath, { headers: this.headers(session.accessToken) });
+      res = await send(session.accessToken);
     }
     if (res.status === 401) throw new HttpError(401, 'Your Fretlane Cloud sign-in has expired. Sign in again.');
     if (!res.ok) throw new HttpError(502, `Fretlane Cloud answered ${res.status}.`);
@@ -208,6 +271,7 @@ export class FretlaneCloud {
   private async forget(): Promise<void> {
     this.session = null;
     this.stored = null;
+    this.premiumCache = null;
     await fs.rm(this.file, { force: true });
   }
 

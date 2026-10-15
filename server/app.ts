@@ -104,7 +104,15 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
       const id = parts[2] ? decodeURIComponent(parts[2]) : undefined;
       if (!id) {
         if (method === 'GET') return send(res, 200, library.list());
-        if (method === 'POST') return send(res, 201, await library.add(await readJson<NewSongInput>(req)));
+        if (method === 'POST') {
+          const input = await readJson<NewSongInput>(req);
+          if (input.written) await requirePremium();
+          return send(res, 201, await library.add(input));
+        }
+      } else if (parts[3] === 'tab' && method === 'PUT') {
+        // The tab editor's save: raw alphaTex, not JSON.
+        await requirePremium();
+        return send(res, 200, await library.setTab(id, req));
       } else if (parts[3] === 'tab' && method === 'GET') {
         const song = library.get(id);
         if (!song) throw new HttpError(404, 'Song not found');
@@ -164,6 +172,9 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
 
     if (parts[1] === 'cloud') return handleCloud(req, res, url, parts.slice(2), method);
 
+    // Fretlane Premium (the tab editor). POST asks the website again instead of using the cached answer.
+    if (parts[1] === 'premium' && (method === 'GET' || method === 'POST')) return send(res, 200, await cloud.premium(method === 'POST'));
+
     // `app` lets tools (and the smoke test) recognise this server.
     if (parts[1] === 'health') return send(res, 200, { ok: true, app: APP_ID, library: opts.libraryDir });
     throw new HttpError(404, 'Unknown API route');
@@ -201,6 +212,20 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
       return send(res, 201, await library.add(cloudTabToSongInput(row, await cloud.downloadTab(row))));
     }
     throw new HttpError(404, 'Unknown API route');
+  }
+
+  /** Writing songs needs Fretlane Premium. The UI checks first; this keeps the API honest too. */
+  async function requirePremium(): Promise<void> {
+    const status = await cloud.premium();
+    if (status.premium) return;
+    throw new HttpError(
+      402,
+      status.reason === 'signed-out'
+        ? 'Writing songs is part of Fretlane Premium. Sign in to Fretlane Cloud first.'
+        : status.reason === 'offline'
+          ? 'Could not check your Fretlane Premium plan. Are you online?'
+          : 'Writing songs is part of Fretlane Premium, which comes with the Fretlane Cloud plan.',
+    );
   }
 
   function sendPage(res: http.ServerResponse, status: number, title: string, message: string): void {
