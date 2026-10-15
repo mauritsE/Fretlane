@@ -21,7 +21,9 @@
     "dist:desktop": "npm run build && npm run build:desktop && node scripts/collect-licenses.mjs && electron-builder --publish never",
     "render-icon": "tsx scripts/render-icon.ts",
     "start": "npm run build && tsx server/index.ts --serve-dist",
-    "build-songbook": "tsx scripts/build-songbook.ts"
+    "build-songbook": "tsx scripts/build-songbook.ts",
+    "marketing:draft": "tsx marketing/machine/draft.ts",
+    "marketing:post": "tsx marketing/machine/post.ts"
   },
   "engines": {
     "node": ">=20"

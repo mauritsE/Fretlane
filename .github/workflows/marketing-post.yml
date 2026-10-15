@@ -1,0 +1,30 @@
+name: Marketing posts
+
+# Posts what is due in marketing/queue/ (merged = approved). Runs a few minutes after the posting
+# slots: 18:30 Amsterdam for Shorts, 12:30 for release posts (two UTC hours each, for summer and
+# winter time). A late-merged post goes out on the next run, up to 72 hours late.
+# While every channel in marketing/machine/channels.json is off, this is a dry run.
+on:
+  schedule:
+    - cron: '41 10,11,16,17 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency: marketing-post
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx tsx marketing/machine/post.ts

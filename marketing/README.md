@@ -3,6 +3,7 @@
 > YouTube walkthrough, trailer, thumbnails and upload copy: see [`youtube/`](youtube/README.md).
 > Instagram Reels, carousel, stories, link card and copy for other channels: see [`instagram/`](instagram/README.md).
 > Spotify announcement images (square, landscape, story) and post text: see [`social/`](social/README.md).
+> Automated Shorts / Reels twice a week plus release posts, approved through PRs: see [`machine/`](machine/README.md).
 
 `fretlane-demo.mp4`: 1920×1080, 96 s, H.264 + AAC, burned-in captions (LinkedIn autoplays muted).
 `LINKEDIN_POST.md` holds the post that goes with it.

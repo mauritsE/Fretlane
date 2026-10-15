@@ -1,0 +1,68 @@
+name: Marketing drafts
+
+# Drafts social posts and opens a PR with them. Merging the PR approves the posts;
+# marketing-post.yml posts them at their time. See marketing/machine/README.md.
+# - Every Friday: the Shorts for the next week (Tuesday and Friday evening).
+# - When a release is published: a release post for the next day.
+# - By hand (Actions tab → Run workflow): Shorts for the next N days.
+on:
+  schedule:
+    - cron: '7 7 * * 5'
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      days:
+        description: 'Draft Shorts for the next N days'
+        default: '7'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency: marketing-draft
+
+jobs:
+  draft:
+    if: github.event_name != 'release' || !github.event.release.prerelease
+    runs-on: ubuntu-latest
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-inter
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+      - name: Draft posts
+        env:
+          EVENT: ${{ github.event_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_BODY: ${{ github.event.release.body }}
+          DAYS: ${{ inputs.days || '7' }}
+        run: |
+          if [ "$EVENT" = release ]; then
+            printf '%s' "$RELEASE_BODY" > "$RUNNER_TEMP/notes.md"
+            npx tsx marketing/machine/draft.ts --release "$RELEASE_TAG" --notes-file "$RUNNER_TEMP/notes.md" --upload
+          else
+            # From tomorrow, so a Friday run drafts next week's Tuesday and Friday.
+            npx tsx marketing/machine/draft.ts --from "$(date -u -d tomorrow +%Y-%m-%dT00:00:00Z)" --days "$DAYS" --upload
+          fi
+      - name: Open a PR
+        run: |
+          if [ -z "$(git status --porcelain marketing/queue)" ]; then echo "Nothing drafted."; exit 0; fi
+          branch="marketing/drafts-$(date -u +%Y%m%d-%H%M%S)"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git switch -c "$branch"
+          git add marketing/queue
+          git commit -m "Marketing: drafted posts"
+          git push origin "$branch"
+          gh pr create --base "${{ github.event.repository.default_branch }}" --head "$branch" \
+            --title "Marketing: posts to approve ($(ls marketing/queue/*.json | wc -l | tr -d ' ') queued)" \
+            --body-file marketing/work/machine/pr-body.md
