@@ -7,6 +7,8 @@ import { formatTime, h, toast } from './dom.ts';
 import { openSongDialog } from './libraryView.ts';
 import { YouTubeVideo } from './youtube.ts';
 import { SpotifyTrack } from './spotify.ts';
+import { AudioFilePlayer } from './audioFile.ts';
+import { WaveformView } from './waveform.ts';
 import { MEDIA_KINDS, type MediaKind, type MediaPlayer, type MediaState } from './media.ts';
 import { metronomeButton, setMetronomeSongContext } from './metronome.ts';
 
@@ -26,8 +28,8 @@ export async function renderPlayer(root: HTMLElement, songId: string): Promise<C
     return () => {};
   }
 
-  // The recording the tab follows. "video" names below cover a Spotify track too.
-  const mediaKind: MediaKind | null = song.youtubeId ? 'youtube' : song.spotifyId ? 'spotify' : null;
+  // The recording the tab follows. "video" names below cover a Spotify track and an audio file too.
+  const mediaKind: MediaKind | null = song.youtubeId ? 'youtube' : song.spotifyId ? 'spotify' : song.audioFile ? 'audio' : null;
   const media = mediaKind ? MEDIA_KINDS[mediaKind] : null;
   const noun = media?.noun ?? 'video';
   const useVideo = !!mediaKind;
@@ -106,7 +108,16 @@ export async function renderPlayer(root: HTMLElement, songId: string): Promise<C
   );
   const syncBtn = h('button.toggle', { title: `Align the tab with the ${noun}`, disabled: !useVideo }, '⇆ Sync');
 
-  const syncPanel = h('aside.sync-panel.hidden');
+  const syncPanel = h('aside.sync-panel.hidden', { class: mediaKind === 'audio' ? 'with-waveform' : '' });
+  // Only an audio file can be decoded in the browser; YouTube and Spotify don't give us their sound.
+  const waveform =
+    mediaKind === 'audio'
+      ? new WaveformView(api.audioUrl(song), {
+          currentTime: () => video?.currentTime ?? 0,
+          pins: () => song.syncPoints,
+          seek: (t) => video?.seek(t),
+        })
+      : null;
 
   const favBtn = h('button.star-toggle', { title: 'Favorite' });
   const doneBtn = h('button.done-toggle');
@@ -146,8 +157,8 @@ export async function renderPlayer(root: HTMLElement, songId: string): Promise<C
         'button',
         {
           onclick: () =>
-            openSongDialog(song, async (s) => {
-              const videoChanged = s.youtubeId !== song.youtubeId || s.spotifyId !== song.spotifyId;
+            openSongDialog(song, async (s, { audioUploaded }) => {
+              const videoChanged = audioUploaded || s.youtubeId !== song.youtubeId || s.spotifyId !== song.spotifyId || s.audioFile !== song.audioFile;
               song = s;
               titleEl.replaceChildren(h('strong', {}, s.title), h('span', {}, ` — ${s.artist}`));
               if (videoChanged) location.reload();
@@ -229,11 +240,13 @@ export async function renderPlayer(root: HTMLElement, songId: string): Promise<C
   at.playedBeatChanged.on((beat) => setCurrentBar(beat.voice.bar.masterBar.index));
   at.beatMouseDown.on((beat) => setCurrentBar(beat.voice.bar.masterBar.index));
 
-  // ---------- YouTube/Spotify <-> alphaTab bridge ----------
+  // ---------- YouTube/Spotify/audio file <-> alphaTab bridge ----------
   if (mediaKind && media) {
     try {
+      let recordingPlaying = false;
       const events = {
         onStateChange: (state: MediaState) => {
+          recordingPlaying = state === 'playing';
           // The recording is the master clock: mirror its state into alphaTab.
           if (state === 'playing') at.play();
           else if (state === 'paused') at.pause();
@@ -244,12 +257,22 @@ export async function renderPlayer(root: HTMLElement, songId: string): Promise<C
       video =
         mediaKind === 'youtube'
           ? await YouTubeVideo.create(videoBox, song.youtubeId, events)
-          : await SpotifyTrack.create(videoBox, song.spotifyId, {
-              ...events,
-              onPreview: () => toast('Spotify is playing a 30-second preview. Log in to Spotify in this browser to hear the full track.'),
-            });
+          : mediaKind === 'audio'
+            ? await AudioFilePlayer.create(videoBox, api.audioUrl(song), song.audioName, events)
+            : await SpotifyTrack.create(videoBox, song.spotifyId, {
+                ...events,
+                onPreview: () => toast('Spotify is playing a 30-second preview. Log in to Spotify in this browser to hear the full track.'),
+              });
       cleanups.push(() => video?.destroy());
       const v = video;
+      // Moving the paused recording past the end of the tab (into an outro, or anywhere in a song whose
+      // tab is just the intro riff) makes alphaTab finish, and its stop() seeks back to the first bar.
+      // That would undo the user's own seek, so a seek that comes from finishing is ignored while paused.
+      let finishing = false;
+      at.playerFinished.on(() => {
+        finishing = true;
+        window.setTimeout(() => (finishing = false)); // stop() runs right after the event, in the same task
+      });
       const handler: alphaTab.synth.IExternalMediaHandler = {
         get backingTrackDuration() {
           return v.duration * 1000;
@@ -267,6 +290,7 @@ export async function renderPlayer(root: HTMLElement, songId: string): Promise<C
           v.setVolume(value);
         },
         seekTo(ms: number) {
+          if (finishing && !recordingPlaying) return;
           v.seek(ms / 1000);
         },
         play() {
@@ -292,6 +316,7 @@ export async function renderPlayer(root: HTMLElement, songId: string): Promise<C
           (at.player.output as alphaTab.synth.IExternalMediaSynthOutput).updatePosition(t * 1000);
           timeEl.textContent = formatTime(t);
         }
+        if (waveform && !syncPanel.classList.contains('hidden')) waveform.draw();
         raf = requestAnimationFrame(tick);
       };
       raf = requestAnimationFrame(tick);
@@ -435,9 +460,12 @@ export async function renderPlayer(root: HTMLElement, songId: string): Promise<C
       h(
         'p.hint',
         {},
-        `Pause the ${noun} exactly on the first beat of a bar, then pin that bar to the current ${noun} time. `,
+        waveform
+          ? 'Click the first beat of a bar in the waveform (it snaps to the note), then pin that bar. '
+          : `Pause the ${noun} exactly on the first beat of a bar, then pin that bar to the current ${noun} time. `,
         'One pin sets the start; add more pins to follow tempo changes in the recording.',
       ),
+      waveform?.el ?? null,
       h(
         'div.row',
         {},
@@ -521,7 +549,10 @@ export async function renderPlayer(root: HTMLElement, songId: string): Promise<C
   function toggleSync(show = syncPanel.classList.contains('hidden')): void {
     syncPanel.classList.toggle('hidden', !show);
     syncBtn.classList.toggle('active', show);
-    if (show) drawSyncPanel();
+    if (show) {
+      drawSyncPanel();
+      void waveform?.load();
+    }
     else tapMode = false;
   }
 

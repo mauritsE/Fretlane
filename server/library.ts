@@ -1,4 +1,4 @@
-import { promises as fs } from 'node:fs';
+import { createWriteStream, promises as fs } from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { NewSongInput, Song, SongPatch, SyncPoint, TabFormat } from '../shared/types.ts';
@@ -6,6 +6,7 @@ import { detectTabFormat, parseMediaLink, parseYouTubeId, slugify } from '../sha
 import { asciiTabToAlphaTex } from '../shared/asciiTab.ts';
 import { normalizeSyncPoints } from '../shared/sync.ts';
 import { fetchTab } from './fetchTab.ts';
+import { MAX_AUDIO_BYTES, detectAudioFormat } from '../shared/audio.ts';
 
 const MAX_TAB_BYTES = 20 * 1024 * 1024;
 /** The demo songs that shipped before the seed was tracked; libraries from then already had them. */
@@ -15,6 +16,7 @@ export class Library {
   private readonly dbFile: string;
   private readonly seededFile: string;
   private readonly tabsDir: string;
+  private readonly audioDir: string;
   private songs: Song[] = [];
   private writeQueue: Promise<void> = Promise.resolve();
 
@@ -22,6 +24,7 @@ export class Library {
     this.dbFile = path.join(root, 'songs.json');
     this.seededFile = path.join(root, 'seeded.json');
     this.tabsDir = path.join(root, 'tabs');
+    this.audioDir = path.join(root, 'audio');
   }
 
   /**
@@ -31,6 +34,7 @@ export class Library {
    */
   async init(seed?: string | SeedSource): Promise<void> {
     await fs.mkdir(this.tabsDir, { recursive: true });
+    await fs.mkdir(this.audioDir, { recursive: true });
     let fresh = false;
     try {
       this.songs = (JSON.parse(await fs.readFile(this.dbFile, 'utf8')) as Song[]).map(withDefaults);
@@ -99,6 +103,61 @@ export class Library {
     return path.join(this.tabsDir, song.tabFile);
   }
 
+  /** The song's own audio file on disk, or null when it has none. */
+  audioPath(song: Song): string | null {
+    return song.audioFile ? path.join(this.audioDir, song.audioFile) : null;
+  }
+
+  /**
+   * Stores an audio file (streamed, since a WAV can be hundreds of MB) as the song's recording.
+   * It replaces a YouTube video, Spotify track or earlier audio file. Sync pins are kept.
+   */
+  async setAudio(id: string, name: string, data: AsyncIterable<Uint8Array>): Promise<Song> {
+    const song = this.get(id);
+    if (!song) throw new HttpError(404, 'Song not found');
+    const tmp = path.join(this.audioDir, `.upload-${randomUUID()}`);
+    try {
+      let size = 0;
+      const head: Uint8Array[] = [];
+      const out = createWriteStream(tmp);
+      const done = new Promise<void>((resolve, reject) => {
+        out.on('finish', resolve);
+        out.on('error', reject);
+      });
+      try {
+        for await (const chunk of data) {
+          size += chunk.byteLength;
+          if (size > MAX_AUDIO_BYTES) throw new HttpError(413, `Audio file is larger than ${MAX_AUDIO_BYTES / 1024 / 1024} MB.`);
+          if (head.length < 4) head.push(chunk);
+          if (!out.write(chunk)) await new Promise((r) => out.once('drain', r));
+        }
+      } finally {
+        out.end();
+        await done;
+      }
+      if (size === 0) throw new HttpError(400, 'Audio file is empty.');
+      const format = detectAudioFormat(Buffer.concat(head).subarray(0, 16));
+      if (!format) throw new HttpError(415, 'Not a supported audio file. Use MP3, WAV, OGG/Opus, FLAC, M4A/AAC or WebM.');
+
+      const file = `${song.id}.${format}`;
+      await fs.rename(tmp, path.join(this.audioDir, file));
+      if (song.audioFile && song.audioFile !== file) await fs.rm(path.join(this.audioDir, song.audioFile), { force: true });
+      Object.assign(song, { audioFile: file, audioName: name.split(/[\\/]/).pop()?.trim() || file, youtubeId: '', spotifyId: '' });
+      song.updatedAt = new Date().toISOString();
+      await this.persist();
+      return song;
+    } finally {
+      await fs.rm(tmp, { force: true });
+    }
+  }
+
+  private async dropAudio(song: Song): Promise<void> {
+    const file = this.audioPath(song);
+    song.audioFile = '';
+    song.audioName = '';
+    if (file) await fs.rm(file, { force: true });
+  }
+
   async add(input: NewSongInput, persist = true): Promise<Song> {
     let bytes: Uint8Array;
     let sourceName: string;
@@ -139,6 +198,8 @@ export class Library {
       title,
       artist,
       ...(input.media !== undefined ? parseMediaLink(input.media) : { youtubeId: parseYouTubeId(input.youtube), spotifyId: '' }),
+      audioFile: '',
+      audioName: '',
       tabFile,
       tabFormat: format,
       tabSource: input.tabUrl ?? input.tabFile?.name ?? 'pasted text',
@@ -162,10 +223,15 @@ export class Library {
     if (patch.title !== undefined) song.title = String(patch.title).trim() || song.title;
     if (patch.artist !== undefined) song.artist = String(patch.artist).trim() || song.artist;
     const youtube = patch.youtube ?? patch.youtubeId;
-    if (patch.media !== undefined) Object.assign(song, parseMediaLink(patch.media));
-    else if (youtube !== undefined) {
+    if (patch.media !== undefined) {
+      Object.assign(song, parseMediaLink(patch.media));
+      await this.dropAudio(song);
+    } else if (youtube !== undefined) {
       song.youtubeId = parseYouTubeId(youtube);
-      if (song.youtubeId) song.spotifyId = '';
+      if (song.youtubeId) {
+        song.spotifyId = '';
+        await this.dropAudio(song);
+      }
     }
     if (patch.defaultTrack !== undefined) song.defaultTrack = Math.max(0, Math.floor(Number(patch.defaultTrack)) || 0);
     if (patch.tags !== undefined) song.tags = patch.tags.map(String);
@@ -187,6 +253,7 @@ export class Library {
     if (!song) throw new HttpError(404, 'Song not found');
     this.songs = this.songs.filter((s) => s.id !== id);
     await fs.rm(this.tabPath(song), { force: true });
+    await this.dropAudio(song);
     await this.persist();
   }
 
@@ -203,7 +270,14 @@ export class Library {
 
 /** Songs saved by older versions lack the newer fields. */
 function withDefaults(song: Song): Song {
-  return { ...song, spotifyId: song.spotifyId ?? '', favorite: song.favorite === true, archivedAt: song.archivedAt ?? null };
+  return {
+    ...song,
+    spotifyId: song.spotifyId ?? '',
+    audioFile: song.audioFile ?? '',
+    audioName: song.audioName ?? '',
+    favorite: song.favorite === true,
+    archivedAt: song.archivedAt ?? null,
+  };
 }
 
 type DemoEntry = Omit<NewSongInput, 'tabFile'> & { file: string; syncPoints?: Song['syncPoints'] };

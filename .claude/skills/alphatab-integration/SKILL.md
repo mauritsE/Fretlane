@@ -21,6 +21,7 @@ The complete typed API is in `node_modules/@coderline/alphatab/dist/alphaTab.d.t
 - **All times are milliseconds** on the alphaTab side, while YouTube uses seconds.
 - Sources that only report their position now and then (Spotify's embed) need interpolation between reports (`shared/mediaClock.ts`), or the cursor stutters.
 - alphaTab calls `handler.seekTo()` on its own, for example when the tab reaches its end. Don't build logic that assumes every seek came from the user.
+- Concretely: moving the paused recording past the tab's last bar makes `checkForFinish` fire `playerFinished` and then call `stop()` in the same task, which seeks the recording back to bar 1. `playerView.ts` sets a flag in `playerFinished` (cleared with `setTimeout`) and skips that `seekTo` while the recording is paused.
 
 ## Sync points
 - Model: `MasterBar.syncPoints: Automation[] | undefined`. The easy path is `score.applyFlatSyncPoints([{ barIndex, barPosition: 0, barOccurence: 0, millisecondOffset }])`, followed by `at.updateSyncPoints()` after any change.

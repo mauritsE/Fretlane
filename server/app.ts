@@ -1,5 +1,5 @@
 import http from 'node:http';
-import { promises as fs } from 'node:fs';
+import { createReadStream, promises as fs } from 'node:fs';
 import path from 'node:path';
 import { HttpError, Library, type SeedSource } from './library.ts';
 import { fetchTab } from './fetchTab.ts';
@@ -8,6 +8,7 @@ import { FretlaneCloud } from './cloud.ts';
 import { cloudTabToSongInput, summarizeCloudTab, type CloudConfig } from '../shared/cloud.ts';
 import type { NewSongInput, SongPatch } from '../shared/types.ts';
 import { APP_ID, APP_NAME } from '../shared/brand.ts';
+import { audioFormatOfFile, audioMime, parseByteRange } from '../shared/audio.ts';
 
 const MAX_BODY = 30 * 1024 * 1024;
 
@@ -111,6 +112,17 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
         res.writeHead(200, { 'content-type': 'application/octet-stream', 'cache-control': 'no-cache' });
         res.end(data);
         return;
+      } else if (parts[3] === 'audio') {
+        if (method === 'PUT') {
+          const name = decodeURIComponent(String(req.headers['x-file-name'] ?? 'audio'));
+          return send(res, 200, await library.setAudio(id, name, req));
+        }
+        if (method === 'GET' || method === 'HEAD') {
+          const song = library.get(id);
+          const file = song && library.audioPath(song);
+          if (!file) throw new HttpError(404, 'This song has no audio file');
+          return sendFile(req, res, file, audioMime(audioFormatOfFile(file) ?? 'mp3'));
+        }
       } else if (!parts[3]) {
         if (method === 'GET') {
           const song = library.get(id);
@@ -197,6 +209,37 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
     res.end(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${esc(title)} · ${esc(APP_NAME)}</title>
 <style>body{font:16px/1.5 system-ui,sans-serif;background:#16181d;color:#e6e8ee;display:grid;place-items:center;min-height:90vh;margin:0 16px}main{max-width:32em;text-align:center}h1{font-size:1.4em}</style>
 <main><h1>${esc(title)}</h1><p>${esc(message)}</p></main>`);
+  }
+
+  /** Sends a file with HTTP range support; `<audio>` needs ranges to seek. */
+  async function sendFile(req: http.IncomingMessage, res: http.ServerResponse, file: string, type: string): Promise<void> {
+    const { size } = await fs.stat(file);
+    const range = parseByteRange(req.headers.range, size);
+    const headers = { 'content-type': type, 'accept-ranges': 'bytes', 'cache-control': 'no-cache' };
+    if (range === 'unsatisfiable') {
+      res.writeHead(416, { ...headers, 'content-range': `bytes */${size}` });
+      res.end();
+      return;
+    }
+    const { start, end } = range ?? { start: 0, end: size - 1 };
+    res.writeHead(range ? 206 : 200, {
+      ...headers,
+      'content-length': String(end - start + 1),
+      ...(range ? { 'content-range': `bytes ${start}-${end}/${size}` } : {}),
+    });
+    if (req.method === 'HEAD' || size === 0) {
+      res.end();
+      return;
+    }
+    await new Promise<void>((resolve, reject) => {
+      const stream = createReadStream(file, { start, end });
+      stream.on('error', reject);
+      res.on('close', () => {
+        stream.destroy();
+        resolve();
+      });
+      stream.pipe(res);
+    });
   }
 
   async function serveStatic(res: http.ServerResponse, url: URL, assets: StaticAssets): Promise<void> {

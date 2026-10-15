@@ -7,6 +7,7 @@ import { metronomeButton } from './metronome.ts';
 import { mediaPicker } from './mediaPicker.ts';
 import { cloudButton } from './cloudView.ts';
 import { buildSearchQuery } from '../shared/mediaSearch.ts';
+import { AUDIO_ACCEPT, MAX_AUDIO_BYTES } from '../shared/audio.ts';
 
 type LibraryFilter = 'all' | 'favorites' | 'archive';
 /** Remembered while the app is open, so "Back to library" returns to the same view. */
@@ -159,7 +160,9 @@ export async function renderLibrary(root: HTMLElement): Promise<void> {
           ? h('span.badge.yt', { title: 'Plays along with YouTube' }, '▶ YouTube')
           : s.spotifyId
             ? h('span.badge.sp', { title: 'Plays along with Spotify' }, '♫ Spotify')
-            : h('span.badge', { title: 'Uses the built-in synthesizer' }, 'Synth'),
+            : s.audioFile
+              ? h('span.badge.audio', { title: `Plays along with ${s.audioName}` }, '🎵 Audio')
+              : h('span.badge', { title: 'Uses the built-in synthesizer' }, 'Synth'),
         s.syncPoints.length ? h('span.badge.synced', {}, `${s.syncPoints.length} sync`) : null,
         h('span.spacer'),
         archived
@@ -201,8 +204,11 @@ function hue(id: string): number {
   return h;
 }
 
-/** Add (song = null) or edit an existing song. */
-export function openSongDialog(song: Song | null, onSaved: (s: Song) => void | Promise<void>): void {
+/** Add (song = null) or edit an existing song. `audioUploaded` says a new audio file replaced the recording. */
+export function openSongDialog(
+  song: Song | null,
+  onSaved: (s: Song, info: { audioUploaded: boolean }) => void | Promise<void>,
+): void {
   const editing = !!song;
   const title = h('input', { name: 'title', placeholder: editing ? '' : 'Leave empty to use the tab title / file name', value: song?.title ?? '' });
   const artist = h('input', { name: 'artist', value: song?.artist ?? '' });
@@ -261,6 +267,52 @@ export function openSongDialog(song: Song | null, onSaved: (s: Song) => void | P
       }),
     );
   });
+  // Your own recording (MP3, WAV, …) instead of a link. It is uploaded after the song is saved.
+  let audioChoice: File | null = null;
+  let keepAudio = !!song?.audioFile;
+  const audioInput = h('input.hidden', { type: 'file', accept: AUDIO_ACCEPT, id: 'song-audio' });
+  const audioButton = h(
+    'button',
+    { type: 'button', title: 'Play along with your own MP3, WAV, FLAC, OGG or M4A file', onclick: () => audioInput.click() },
+    '🎵 Audio file',
+  );
+  const recordingRow = h('div.recording-row', {}, recording, findButton, audioButton, audioInput);
+  const audioChip = h('div.audio-chip.hidden');
+  const drawAudio = () => {
+    const name = audioChoice?.name ?? (keepAudio ? song?.audioName : '');
+    audioChip.classList.toggle('hidden', !name);
+    recording.disabled = findButton.disabled = !!name;
+    if (name) closePicker();
+    audioChip.replaceChildren(
+      ...[
+        h('span.audio-chip-name', { title: name ?? '' }, `🎵 ${name}`),
+        audioChoice ? h('small', {}, `${(audioChoice.size / 1024 / 1024).toFixed(1)} MB, uploaded when you save`) : null,
+        h('span.spacer'),
+        h('button.mini', { type: 'button', title: 'Use a link instead', onclick: removeAudio }, '✕ Remove'),
+      ].filter((c): c is HTMLElement => c !== null),
+    );
+    if (name) recordingHint.textContent = 'Your own recording: you can slow it down (pitch stays the same) and it works offline. Line it up with the tab using ⇆ Sync.';
+  };
+  function removeAudio(): void {
+    audioChoice = null;
+    keepAudio = false;
+    audioInput.value = '';
+    drawAudio();
+    checkRecording();
+  }
+  audioInput.addEventListener('change', () => {
+    const f = audioInput.files?.[0];
+    if (!f) return;
+    if (f.size > MAX_AUDIO_BYTES) {
+      toast(`That file is larger than ${MAX_AUDIO_BYTES / 1024 / 1024} MB. Try an MP3 instead.`, 'error');
+      audioInput.value = '';
+      return;
+    }
+    audioChoice = f;
+    drawAudio();
+  });
+  drawAudio();
+
   const tags = h('input', { name: 'tags', placeholder: 'rock, practice, drop-d', value: song?.tags.join(', ') ?? '' });
 
   let source: 'file' | 'url' | 'text' = 'file';
@@ -307,11 +359,13 @@ export function openSongDialog(song: Song | null, onSaved: (s: Song) => void | P
         status.textContent = editing ? 'Saving…' : 'Importing tab…';
         try {
           const tagList = tags.value.split(',').map((t) => t.trim().toLowerCase()).filter(Boolean);
+          // A kept audio file is left alone; otherwise the link field decides (an empty one removes the recording).
+          const media = audioChoice || keepAudio ? undefined : recording.value;
           let saved: Song;
           if (song) {
-            saved = await api.updateSong(song.id, { title: title.value, artist: artist.value, media: recording.value, tags: tagList });
+            saved = await api.updateSong(song.id, { title: title.value, artist: artist.value, media, tags: tagList });
           } else {
-            const input: NewSongInput = { title: title.value, artist: artist.value, media: recording.value, tags: tagList };
+            const input: NewSongInput = { title: title.value, artist: artist.value, media: media ?? '', tags: tagList };
             if (source === 'file') {
               const f = fileInput.files?.[0];
               if (!f) throw new Error('Choose a tab file first.');
@@ -325,9 +379,24 @@ export function openSongDialog(song: Song | null, onSaved: (s: Song) => void | P
             }
             saved = await api.addSong(input);
           }
+          let audioUploaded = false;
+          if (audioChoice) {
+            status.textContent = 'Uploading audio…';
+            try {
+              saved = await api.uploadAudio(saved.id, audioChoice);
+              audioUploaded = true;
+            } catch (err) {
+              if (editing) throw err;
+              // The song itself was added; say what's missing rather than leaving a half-done dialog.
+              toast(`Added "${saved.title}", but the audio file was not: ${(err as Error).message}`, 'error');
+              dialog.close();
+              await onSaved(saved, { audioUploaded });
+              return;
+            }
+          }
           dialog.close();
           toast(editing ? 'Saved' : `Added "${saved.title}"`);
-          await onSaved(saved);
+          await onSaved(saved, { audioUploaded });
         } catch (err) {
           status.textContent = (err as Error).message;
           status.classList.add('error');
@@ -343,8 +412,9 @@ export function openSongDialog(song: Song | null, onSaved: (s: Song) => void | P
     h(
       'div.recording-field',
       {},
-      h('label', { for: 'song-recording' }, 'Recording (YouTube or Spotify)'),
-      h('div.recording-row', {}, recording, findButton),
+      h('label', { for: 'song-recording' }, 'Recording (YouTube, Spotify or your own audio file)'),
+      recordingRow,
+      audioChip,
       recordingHint,
       pickerHost,
     ),

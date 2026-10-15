@@ -36,6 +36,18 @@ export const api = {
   cloudLogout: () => request<CloudStatus>('/api/cloud/logout', { method: 'POST' }),
   cloudTabs: () => request<CloudTabSummary[]>('/api/cloud/tabs'),
   importCloudTab: (id: string) => request<Song>(`/api/cloud/tabs/${encodeURIComponent(id)}/import`, { method: 'POST' }),
+  /** Uploads the user's own recording (raw bytes, not JSON: WAV files are big). */
+  async uploadAudio(id: string, file: File): Promise<Song> {
+    const res = await fetch(`/api/songs/${encodeURIComponent(id)}/audio`, {
+      method: 'PUT',
+      body: file,
+      headers: { 'content-type': file.type || 'application/octet-stream', 'x-file-name': encodeURIComponent(file.name) },
+    });
+    const body = (await res.json().catch(() => ({}))) as Song & { error?: string };
+    if (!res.ok) throw new Error(body.error ?? `Could not upload the audio file (${res.status})`);
+    return body;
+  },
+  audioUrl: (song: Song) => `/api/songs/${encodeURIComponent(song.id)}/audio?v=${encodeURIComponent(song.updatedAt)}`,
   async getTab(id: string): Promise<Uint8Array> {
     const res = await fetch(`/api/songs/${encodeURIComponent(id)}/tab`);
     if (!res.ok) throw new Error(`Could not load tab (${res.status})`);
