@@ -52,5 +52,12 @@ The complete typed API is in `node_modules/@coderline/alphatab/dist/alphaTab.d.t
 - Percussion notes are GM numbers (36 kick, 38 snare, 42 closed hat, 49 crash).
 - **Quirk:** in the parsed model `Note.string` is reversed (alphaTex string 1 → model string 6 on a 6-string). Compare `note.realValue` (MIDI pitch) instead of `.string` in tests.
 
+## Editing (the tab editor)
+- `renderScore(newScore, [track], { reuseViewport: true, firstChangedMasterBar })` with a *new* Score object reloads the score, regenerates the MIDI (`loadMidiForScore`) and renders in the worker (the score is serialized there, so new objects are fine). Measured: ~45–150 ms per edit on a 200-bar song in headless Chromium, parse included.
+- Changing the model directly and calling `score.finish(settings)` again also works (under 1 ms warm for 200 bars) and round-trips through `AlphaTexExporter` and `Gp7Exporter`, but the editor keeps its own document and re-parses alphaTex instead, so edits stay pure and testable.
+- `Gp7Exporter().export()` takes ~130–420 ms for 200 bars; don't run it per keystroke.
+- Clicks: `settings.core.includeNoteBounds = true`, `enableUserInteraction: false` (no seek/selection), then `boundsLookup.getBeatAtPos(x, y)` with coordinates relative to the element holding `.at-host`. `BarBounds.visualBounds` of a tab-only staff spans exactly top line to bottom line: line *n* of *k* is at `y + (n-1) * h/(k-1)` (checked against `noteHeadBounds` in e2e/editor.ts).
+- **Don't call `playNote()` / `playBeat()` per keystroke.** alphaTab's Web Audio output starts its source node asynchronously (after the worklet module promise); a `pause()`/`stop()` or the MIDI reload of the next `renderScore()` before that throws "cannot call stop without calling start first" / "start more than once". The editor auditions with its own Web Audio voice (`src/pluck.ts`), and holds back a pause, a stop or a re-render that comes within 300 ms of `play()` (`PLAY_STARTUP_MS` in `src/editorView.ts`).
+
 ## Validate without a browser
 `npm run validate-tab -- file...` uses `AlphaTexImporter.initFromString(tex, new Settings()).readScore()` or `ScoreLoader.loadScoreFromBytes(bytes, settings)` in Node.

@@ -52,3 +52,45 @@ describe('deciding premium', () => {
     expect(decide({ stored: check({ active: false }) })).toMatchObject({ premium: false, reason: 'no-plan' });
   });
 });
+
+describe('the server gate', () => {
+  async function withServer(premiumIncluded: boolean, run: (url: string) => Promise<void>): Promise<void> {
+    const { promises: fs } = await import('node:fs');
+    const os = await import('node:os');
+    const path = await import('node:path');
+    const { startServer } = await import('../server/app.ts');
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'fretlane-premium-'));
+    // An unreachable cloud: nobody is signed in, so the check never needs it.
+    const server = await startServer({ port: 0, host: '127.0.0.1', libraryDir: dir, premiumIncluded, cloud: { siteUrl: 'http://127.0.0.1:9', apiUrl: 'http://127.0.0.1:9', apiKey: 'pk' } });
+    try {
+      await run(server.url);
+    } finally {
+      await server.close();
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  }
+  const written = { title: 'Mine', written: true, tabText: '\\title "Mine"\n3.6.1 |' };
+  const post = (url: string) => fetch(`${url}/api/songs`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(written) });
+
+  it('refuses to create or save written songs without Premium', async () => {
+    await withServer(false, async (url) => {
+      expect(await (await fetch(`${url}/api/premium`)).json()).toMatchObject({ premium: false, reason: 'signed-out' });
+      const res = await post(url);
+      expect(res.status).toBe(402);
+      expect(((await res.json()) as { error: string }).error).toMatch(/Sign in to Fretlane Cloud/);
+      // Importing tabs stays free.
+      expect((await fetch(`${url}/api/songs`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ tabText: '\\title "x"\n3.6.1 |' }) })).status).toBe(201);
+    });
+  });
+
+  it('includes the editor in the App Store build', async () => {
+    await withServer(true, async (url) => {
+      expect(await (await fetch(`${url}/api/premium`)).json()).toMatchObject({ premium: true, reason: 'included' });
+      const res = await post(url);
+      expect(res.status).toBe(201);
+      const song = (await res.json()) as { id: string };
+      const saved = await fetch(`${url}/api/songs/${song.id}/tab`, { method: 'PUT', body: '\\title "Mine"\n5.6.1 |' });
+      expect(saved.status).toBe(200);
+    });
+  });
+});

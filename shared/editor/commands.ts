@@ -442,7 +442,7 @@ export function addTrack(doc: SongDoc, c: Cursor, track: DocTrack): Edit {
     tracks: [...doc.tracks, { ...track, tuning: [...track.tuning] }],
     bars: doc.bars.map((b) => ({ ...b, tracks: [...b.tracks, restsFor(barTicks(b.ts))] })),
   };
-  return { doc: out, cursor: { track: index, bar: c.bar, beat: 0, string: 1 }, changedBar: 0 };
+  return { doc: out, cursor: { track: index, bar: c.bar, beat: 0, string: track.tuning.length }, changedBar: 0 };
 }
 
 export function removeTrack(doc: SongDoc, c: Cursor, index: number): Edit {

@@ -13,6 +13,7 @@ Run these in order and stop at the first failure:
 4. `npm run e2e` runs a Playwright smoke test against http://localhost:5173. It covers the library, synth playback, track switching, the ASCII import, the YouTube, Spotify and audio-file bridges, sync pins, speed and click-to-seek.
 5. Production path: `npm run build`, then `FRETLANE_PORT=5180 FRETLANE_LIBRARY=<scratchpad>/lib npx tsx server/index.ts --serve-dist &` and `npm run e2e -- http://localhost:5180`.
 6. Fretlane Cloud: `npm run e2e:cloud` (needs `npm run build`) runs its own server against a fake website + fake Supabase and drives sign-in, the cloud list, import and sign-out. The real site and Supabase are not reachable from sandboxes; say so when reporting.
+6b. Tab editor: `npm run e2e:editor` (needs `npm run build`) runs against a fake website + fake Supabase with a subscription row: the Premium upsell and unlock, typing with the keyboard, the caret position against alphaTab's note-head bounds, undo, bars, autosave, playback, tracks, `.gp` export, "Make my version", and the API refusing writes once the plan ends. It prints re-render times on a 200-bar song. `DEBUG_ERRORS=1` shows after which step page errors appeared.
 7. Desktop app: `npm run build:desktop && xvfb-run -a npx tsx e2e/desktop.ts` drives the real Electron window.
 8. Look at the screenshots in `e2e/screenshots/` with the Read tool. Passing asserts do not prove the UI looks right.
 

@@ -6,6 +6,7 @@ import { h, toast } from './dom.ts';
 import { metronomeButton } from './metronome.ts';
 import { mediaPicker } from './mediaPicker.ts';
 import { cloudButton } from './cloudView.ts';
+import { writeButton } from './writeDialog.ts';
 import { buildSearchQuery } from '../shared/mediaSearch.ts';
 import { AUDIO_ACCEPT, MAX_AUDIO_BYTES } from '../shared/audio.ts';
 
@@ -39,6 +40,7 @@ export async function renderLibrary(root: HTMLElement): Promise<void> {
       search,
       metronomeButton(),
       cloudButton(),
+      writeButton(),
       h('button.primary', { onclick: () => openSongDialog(null, reload) }, '+ Add song'),
     ),
     h('main.library', {}, viewBar, tagBar, list),
@@ -164,6 +166,7 @@ export async function renderLibrary(root: HTMLElement): Promise<void> {
               ? h('span.badge.audio', { title: `Plays along with ${s.audioName}` }, '🎵 Audio')
               : h('span.badge', { title: 'Uses the built-in synthesizer' }, 'Synth'),
         s.syncPoints.length ? h('span.badge.synced', {}, `${s.syncPoints.length} sync`) : null,
+        s.written ? h('a.badge.written', { href: `#/write/${encodeURIComponent(s.id)}`, title: 'Written by you: open in the tab editor' }, '✎ Mine') : null,
         h('span.spacer'),
         archived
           ? h('button.icon.restore', { title: 'Back to the library', onclick: () => patch(s, { archived: false }, `"${s.title}" is back in your library`) }, '↺')

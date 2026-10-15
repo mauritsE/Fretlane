@@ -253,7 +253,7 @@ export class Library {
    * Replaces the tab of a song written in the editor (the editor's autosave). Written atomically, so
    * a crash mid-save leaves the previous version rather than half a file.
    */
-  async setTab(id: string, data: AsyncIterable<Uint8Array>): Promise<Song> {
+  async setTab(id: string, data: AsyncIterable<Uint8Array> | Iterable<Uint8Array>): Promise<Song> {
     const song = this.get(id);
     if (!song) throw new HttpError(404, 'Song not found');
     if (!song.written) throw new HttpError(409, 'Only songs written in Fretlane can be saved from the editor. Make an editable copy first.');

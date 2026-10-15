@@ -59,6 +59,11 @@ export const OFFLINE_GRACE_DAYS = 14;
 export type PremiumReason =
   /** The website confirmed an active plan just now. */
   | 'active'
+  /**
+   * This build includes the editor without a plan: the Mac App Store build, which people already
+   * paid for, and where Apple doesn't allow unlocking features with a purchase made elsewhere.
+   */
+  | 'included'
   /** The website couldn't be reached; an earlier check said active and is recent enough. */
   | 'offline-grace'
   | 'signed-out'

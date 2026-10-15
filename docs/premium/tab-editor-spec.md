@@ -1,6 +1,12 @@
 # Fretlane Premium: the tab editor
 
-Status: draft for review · Owner: Maurits · Last updated: 2026-10-15
+Status: approved; v1 (M0–M5) implemented · Owner: Maurits · Last updated: 2026-10-15
+
+> **Where the build differs from this plan** (details in [Implementation notes](#implementation-notes-v1)):
+> written songs are stored as alphaTex rather than `.gp` (`.gp` is the export); the editor keeps
+> its own document model instead of mutating alphaTab's; typed notes sound through a small
+> built-in voice rather than alphaTab's `playNote()`; no website changes were needed for the plan
+> check; and the Mac App Store build includes the editor without a plan.
 
 ## Summary
 
@@ -43,8 +49,8 @@ for one. Each item below was checked in `node_modules/@coderline/alphatab/dist/a
 | Save | `Gp7Exporter.export(score)` gives a `.gp` file; `AlphaTexExporter.exportToString(score)` gives alphaTex text |
 
 What we build ourselves: the cursor, the keyboard model, edit commands, undo/redo, bar
-validation and the save path. How fast a re-render is with `firstChangedMasterBar` on a long
-score is **not measured yet**; milestone M0 exists to measure it.
+validation and the save path. M0 measured the re-render cost; see
+[Implementation notes](#implementation-notes-v1).
 
 ## Principles
 
@@ -83,8 +89,9 @@ score is **not measured yet**; milestone M0 exists to measure it.
   editor too.
 
 **Save**
-- Saves into the library as a normal song (`tabFormat: 'gp'`), autosaved after each edit
-  (debounced), so it shows in the library grid like any other song.
+- Saves into the library as a normal song, autosaved after each edit (debounced), so it shows
+  in the library grid like any other song. *Built:* stored as alphaTex (`tabFormat: 'alphatex'`,
+  `written: true`), not `.gp`; see the notes.
 - Export `.gp` to disk.
 
 **Unlock**
@@ -195,14 +202,14 @@ written songs (option 2) become the main reason to pay. Decide before pricing is
 
 ## Milestones
 
-| | Goal | Done when |
-| --- | --- | --- |
-| **M0 spike** | Prove editing works in alphaTab | One bar, arrow keys and digit entry change the score and re-render. Re-render time with `firstChangedMasterBar` is measured on a 200-bar demo score, and the numbers are written into this doc. |
-| **M1 core entry** | Write a riff | Cursor, frets, durations, rests, chords, insert/delete; tests for `cursor`, `commands`, `barCheck` |
-| **M2 save + undo** | Keep what you wrote | New song dialog, autosave via `PUT /tab`, undo/redo, `.gp` export that opens in Guitar Pro and TuxGuitar |
-| **M3 bars + playback** | Build a song | Copy/paste bars, repeats, play from cursor, loop |
-| **M4 premium gate** | Charge for it | Entitlement from the site, cached offline grace, upsell screen; needs the site work |
-| **M5 release** | Ship | `fretlane-verify` passes, e2e covers writing a 4-bar riff and reopening it, desktop build via `fretlane-release` |
+| | Goal | Done when | Status |
+| --- | --- | --- | --- |
+| **M0 spike** | Prove editing works in alphaTab | One bar, arrow keys and digit entry change the score and re-render. Re-render time with `firstChangedMasterBar` is measured on a 200-bar demo score, and the numbers are written into this doc. | Done; numbers below |
+| **M1 core entry** | Write a riff | Cursor, frets, durations, rests, chords, insert/delete; tests for `cursor`, `commands`, `barCheck` | Done (`tests/editor.test.ts`) |
+| **M2 save + undo** | Keep what you wrote | New song dialog, autosave via `PUT /tab`, undo/redo, `.gp` export that opens in Guitar Pro and TuxGuitar | Done; the `.gp` was re-opened with alphaTab, **not yet in Guitar Pro or TuxGuitar** |
+| **M3 bars + playback** | Build a song | Copy/paste bars, repeats, play from cursor, loop | Done |
+| **M4 premium gate** | Charge for it | Entitlement from the site, cached offline grace, upsell screen; needs the site work | Done; no site work was needed. **Tested against a fake website only** |
+| **M5 release** | Ship | `fretlane-verify` passes, e2e covers writing a 4-bar riff and reopening it, desktop build via `fretlane-release` | Verified locally (see notes); macOS/Windows CI not run |
 
 ## How we'll know it works
 
@@ -231,10 +238,82 @@ No targets are set yet; set them after the first beta cohort, not before.
 ## Open questions
 
 1. **Price and plan shape.** Is this one Fretlane Cloud plan that includes the editor, or a
-   separate Premium tier on top of storage?
+   separate Premium tier on top of storage? *v1 answer: the existing $5/month Fretlane Cloud
+   plan (Stripe or Ko-fi) includes it. A separate tier would need a plan column on the site.*
 2. **Should a free tier get a taste?** For example, edit up to 8 bars, or write freely but
    export only with Premium.
 3. **Editing imported tabs:** when, and what to do with formats we can't save back to
-   (MusicXML, ASCII). Proposed answer: save as a new `.gp` copy and keep the original.
-4. **Site work for entitlement:** who builds it, and what is the schema?
+   (MusicXML, ASCII). *v1 answer: "✎ Make my version" in the player makes an editable copy
+   (alphaTex) and lists what the editor can't keep first; the original stays untouched.*
+4. ~~**Site work for entitlement:** who builds it, and what is the schema?~~ *Not needed: the
+   site's `subscriptions` table and `my_kofi_membership()` RPC already answer it.*
 5. **Naming:** "Fretlane Premium", "Fretlane Studio", or "Write mode"?
+
+## Implementation notes (v1)
+
+**What shipped.** Everything in the MVP list, plus two items from "Next" that came cheap once
+the document model existed: techniques (hammer/pull, slide, vibrato, full bend, palm mute, let
+ring, dead note, tie) and section names. Also time signature and tempo changes per bar, 4–8
+string tunings (presets plus custom), several guitar/bass tracks, and "✎ Make my version" for
+tabs not written in Fretlane. Not built: cloud sync of written songs, second voices, drums,
+lyrics, recording a riff into notes.
+
+**Files.** `shared/editor/doc.ts` (document, ticks, rest filling, bar status, tunings),
+`shared/editor/commands.ts` (every edit as a pure function, plus undo history),
+`shared/editor/tex.ts` and `fromScore.ts` (to alphaTex and back), `shared/premium.ts` (plan
+rules), `server/cloud.ts#premium()`, `PUT /api/songs/:id/tab`, `GET|POST /api/premium`,
+`src/editorView.ts` (route `#/write/<id>`), `src/writeDialog.ts`, `src/premiumView.ts`,
+`src/pluck.ts`. Tests: `tests/editor.test.ts`, `tests/premium.test.ts`, additions to
+`tests/cloud.test.ts` and `tests/library.test.ts`, and `e2e/editor.ts` (`npm run e2e:editor`).
+
+**Different from the plan, and why.**
+- *An editor document instead of commands that change alphaTab's `Score`.* The M0 spike showed
+  that changing the model and calling `score.finish()` again works (under 1 ms for 200 bars,
+  and it round-trips through both exporters). But a plain document makes every edit a pure
+  function, undo a stack of documents, and copy/paste a deep copy. All of it is tested in
+  vitest without alphaTab objects. Each edit re-parses alphaTex: 11–38 ms for 400 bars in Node.
+- *Stored as alphaTex, exported as `.gp`.* `Gp7Exporter` took 130–420 ms for 200 bars in Node,
+  too slow to run on every autosave. alphaTex export is a string join, the normal player already
+  plays it, and the file stays readable. **⤓ .gp** exports for Guitar Pro / TuxGuitar /
+  MuseScore, so principle 3 (open files) still holds.
+- *Bars keep themselves full.* A new bar is one rest, a note replaces a rest, a longer note takes
+  room from the rests after it, a shorter one leaves a rest. Notes are never dropped to make
+  room: a bar that still doesn't add up gets a red tint and "⚠ an eighth too long".
+- *Hearing notes.* alphaTab's `playNote()` races with the MIDI reload that every edit triggers.
+  Its Web Audio output starts asynchronously, and the browser throws "cannot call stop without
+  calling start first". The editor plays typed notes with its own plucked-string voice
+  (`src/pluck.ts`, Karplus–Strong). Space still plays the song through alphaTab with the track's
+  real instrument. For the same reason, a pause, a stop or a re-render in the first 300 ms after
+  play waits until those 300 ms have passed.
+- *Plan check without site work.* The app asks the website the way its own account page does:
+  the user's newest `subscriptions` row (Stripe) and `my_kofi_membership()` (Ko-fi), both
+  limited to the user by row-level security. Answers are cached for 10 minutes. The last answer
+  is kept in `library/premium.json` for a 14-day offline grace, never past the paid period.
+- *Mac App Store.* By the user's decision, the Mac App Store build includes the editor without a
+  plan (`premiumIncluded: !!process.mas`). Buyers already paid €4.99, and Apple's guideline 3.1.1
+  doesn't allow unlocking features with an outside purchase. Source and GitHub/desktop builds
+  check the plan. The release skill records this as the one allowed gate.
+
+**M0 numbers.** Time from an edit to alphaTab's `postRenderFinished` on a 201-bar guitar song
+(alphaTex re-parse + `renderScore` with `firstChangedMasterBar`), median of 5 keystrokes,
+headless Chromium in a cloud container, over 15 runs of `e2e/editor.ts` during development.
+Typing near the end of the song took 45–150 ms (usually 50–60); typing in bar 1 took 51–128 ms.
+That is fast enough that no fallback was needed. A real desktop machine will differ.
+
+**Keys as built.** As proposed, plus: Ctrl+←/→ by bar, Shift+←/→ selects bars, Home/End,
+`I` = Insert, Shift+T triplet, H S V B P L X T for techniques, Ctrl+C/X/V bars, Ctrl+Delete
+deletes bars, Esc clears the selection, `?` lists them all. `+` = shorter note, `−` = longer
+(the Guitar Pro direction). The editor listens in the capture phase and stops the keys it uses,
+so the metronome's `M`/`T` shortcuts don't fire while typing techniques.
+
+**Verified, and not.** Verified: unit tests (`npm test`); `e2e/editor.ts` against a fake
+website and Supabase: upsell, unlock, typing, the caret within 1 px of alphaTab's note heads,
+undo, bars, autosave and reopen, playback, tracks, `.gp` re-import, "Make my version", and 402
+once the plan ends. The existing smoke, cloud and desktop e2e suites still pass. **Not
+verified:**
+- the real website's RLS letting the app's session read `subscriptions` and call
+  `my_kofi_membership()`. Check this by signing in with a paying account.
+- opening the exported `.gp` in Guitar Pro or TuxGuitar.
+- how the plucked voice sounds on real speakers.
+- the editor inside the Electron window (the desktop e2e doesn't open it).
+- macOS/Windows release CI.

@@ -6,6 +6,7 @@ import { fetchTab } from './fetchTab.ts';
 import { MediaSearch } from './mediaSearch.ts';
 import { FretlaneCloud } from './cloud.ts';
 import { cloudTabToSongInput, summarizeCloudTab, type CloudConfig } from '../shared/cloud.ts';
+import type { PremiumStatus } from '../shared/premium.ts';
 import type { NewSongInput, SongPatch } from '../shared/types.ts';
 import { APP_ID, APP_NAME } from '../shared/brand.ts';
 import { audioFormatOfFile, audioMime, parseByteRange } from '../shared/audio.ts';
@@ -59,6 +60,11 @@ export interface ServerOptions {
   seed?: string | SeedSource;
   /** Fretlane Cloud endpoints; defaults to the real service (or FRETLANE_CLOUD_* overrides). */
   cloud?: CloudConfig;
+  /**
+   * The tab editor is unlocked without checking for a plan. Set by the Mac App Store build only:
+   * it is paid up front, and Apple doesn't allow unlocking features with an outside purchase.
+   */
+  premiumIncluded?: boolean;
 }
 
 export interface RunningServer {
@@ -75,6 +81,15 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
   await mediaSearch.init();
   const cloud = new FretlaneCloud(opts.libraryDir, opts.cloud);
   await cloud.init();
+
+  /** Fretlane Premium (the tab editor); `force` asks the website again instead of the cached answer. */
+  async function premium(force = false): Promise<PremiumStatus> {
+    if (opts.premiumIncluded) {
+      const { email, siteUrl } = cloud.status();
+      return { premium: true, reason: 'included', email, until: null, checkedAt: null, pricingUrl: new URL('/pricing', siteUrl).toString() };
+    }
+    return cloud.premium(force);
+  }
 
   async function readJson<T>(req: http.IncomingMessage): Promise<T> {
     const chunks: Buffer[] = [];
@@ -173,7 +188,7 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
     if (parts[1] === 'cloud') return handleCloud(req, res, url, parts.slice(2), method);
 
     // Fretlane Premium (the tab editor). POST asks the website again instead of using the cached answer.
-    if (parts[1] === 'premium' && (method === 'GET' || method === 'POST')) return send(res, 200, await cloud.premium(method === 'POST'));
+    if (parts[1] === 'premium' && (method === 'GET' || method === 'POST')) return send(res, 200, await premium(method === 'POST'));
 
     // `app` lets tools (and the smoke test) recognise this server.
     if (parts[1] === 'health') return send(res, 200, { ok: true, app: APP_ID, library: opts.libraryDir });
@@ -216,7 +231,7 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
 
   /** Writing songs needs Fretlane Premium. The UI checks first; this keeps the API honest too. */
   async function requirePremium(): Promise<void> {
-    const status = await cloud.premium();
+    const status = await premium();
     if (status.premium) return;
     throw new HttpError(
       402,
