@@ -6,6 +6,7 @@ import { fetchTab } from './fetchTab.ts';
 import { MediaSearch } from './mediaSearch.ts';
 import { FretlaneCloud } from './cloud.ts';
 import { cloudTabToSongInput, summarizeCloudTab, type CloudConfig } from '../shared/cloud.ts';
+import type { PremiumStatus } from '../shared/premium.ts';
 import type { NewSongInput, SongPatch } from '../shared/types.ts';
 import { APP_ID, APP_NAME } from '../shared/brand.ts';
 import { audioFormatOfFile, audioMime, parseByteRange } from '../shared/audio.ts';
@@ -59,6 +60,11 @@ export interface ServerOptions {
   seed?: string | SeedSource;
   /** Fretlane Cloud endpoints; defaults to the real service (or FRETLANE_CLOUD_* overrides). */
   cloud?: CloudConfig;
+  /**
+   * The tab editor is unlocked without checking for a plan. Set by the Mac App Store build only:
+   * it is paid up front, and Apple doesn't allow unlocking features with an outside purchase.
+   */
+  premiumIncluded?: boolean;
 }
 
 export interface RunningServer {
@@ -75,6 +81,15 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
   await mediaSearch.init();
   const cloud = new FretlaneCloud(opts.libraryDir, opts.cloud);
   await cloud.init();
+
+  /** Fretlane Premium (the tab editor); `force` asks the website again instead of the cached answer. */
+  async function premium(force = false): Promise<PremiumStatus> {
+    if (opts.premiumIncluded) {
+      const { email, siteUrl } = cloud.status();
+      return { premium: true, reason: 'included', email, until: null, checkedAt: null, pricingUrl: new URL('/pricing', siteUrl).toString() };
+    }
+    return cloud.premium(force);
+  }
 
   async function readJson<T>(req: http.IncomingMessage): Promise<T> {
     const chunks: Buffer[] = [];
@@ -104,7 +119,15 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
       const id = parts[2] ? decodeURIComponent(parts[2]) : undefined;
       if (!id) {
         if (method === 'GET') return send(res, 200, library.list());
-        if (method === 'POST') return send(res, 201, await library.add(await readJson<NewSongInput>(req)));
+        if (method === 'POST') {
+          const input = await readJson<NewSongInput>(req);
+          if (input.written) await requirePremium();
+          return send(res, 201, await library.add(input));
+        }
+      } else if (parts[3] === 'tab' && method === 'PUT') {
+        // The tab editor's save: raw alphaTex, not JSON.
+        await requirePremium();
+        return send(res, 200, await library.setTab(id, req));
       } else if (parts[3] === 'tab' && method === 'GET') {
         const song = library.get(id);
         if (!song) throw new HttpError(404, 'Song not found');
@@ -164,6 +187,9 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
 
     if (parts[1] === 'cloud') return handleCloud(req, res, url, parts.slice(2), method);
 
+    // Fretlane Premium (the tab editor). POST asks the website again instead of using the cached answer.
+    if (parts[1] === 'premium' && (method === 'GET' || method === 'POST')) return send(res, 200, await premium(method === 'POST'));
+
     // `app` lets tools (and the smoke test) recognise this server.
     if (parts[1] === 'health') return send(res, 200, { ok: true, app: APP_ID, library: opts.libraryDir });
     throw new HttpError(404, 'Unknown API route');
@@ -201,6 +227,20 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
       return send(res, 201, await library.add(cloudTabToSongInput(row, await cloud.downloadTab(row))));
     }
     throw new HttpError(404, 'Unknown API route');
+  }
+
+  /** Writing songs needs Fretlane Premium. The UI checks first; this keeps the API honest too. */
+  async function requirePremium(): Promise<void> {
+    const status = await premium();
+    if (status.premium) return;
+    throw new HttpError(
+      402,
+      status.reason === 'signed-out'
+        ? 'Writing songs is part of Fretlane Premium. Sign in to Fretlane Cloud first.'
+        : status.reason === 'offline'
+          ? 'Could not check your Fretlane Premium plan. Are you online?'
+          : 'Writing songs is part of Fretlane Premium, which comes with the Fretlane Cloud plan.',
+    );
   }
 
   function sendPage(res: http.ServerResponse, status: number, title: string, message: string): void {

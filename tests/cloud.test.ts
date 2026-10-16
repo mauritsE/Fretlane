@@ -96,6 +96,11 @@ class FakeSupabase {
   n = 0;
   rows: CloudTabRow[] = [row(), row({ id: 'tab-2', title: 'Second', file_path: 'user-1/def.gp5', format: 'gp5', youtube_url: null })];
   files: Record<string, Uint8Array> = { 'user-1/abc.txt': new TextEncoder().encode(ASCII) };
+  /** The signed-in user's newest Stripe subscription row and Ko-fi membership end. */
+  subscription: { status: string; current_period_end: string | null } | null = null;
+  kofiEnd: string | null = null;
+  /** Simulates no network: every request fails like fetch does offline. */
+  offline = false;
 
   private issue(): Response {
     const access = `access-${++this.n}`;
@@ -109,6 +114,7 @@ class FakeSupabase {
     const url = new URL(String(input));
     const headers = new Headers(init?.headers);
     this.calls.push(`${init?.method ?? 'GET'} ${url.pathname}${url.search}`);
+    if (this.offline) throw new TypeError('fetch failed');
     if (headers.get('apikey') !== 'pk') return new Response('no apikey', { status: 401 });
     const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, string>) : {};
     if (url.pathname === '/auth/v1/verify') {
@@ -122,6 +128,8 @@ class FakeSupabase {
     if (url.pathname === '/auth/v1/logout') return new Response(null, { status: 204 });
     const token = headers.get('authorization')?.replace('Bearer ', '') ?? '';
     if (!this.accessTokens.has(token)) return Response.json({ message: 'JWT expired' }, { status: 401 });
+    if (url.pathname === '/rest/v1/subscriptions') return Response.json(this.subscription ? [this.subscription] : []);
+    if (url.pathname === '/rest/v1/rpc/my_kofi_membership' && init?.method === 'POST') return Response.json(this.kofiEnd);
     if (url.pathname === '/rest/v1/tabs') {
       const id = url.searchParams.get('id')?.replace(/^eq\./, '');
       return Response.json(id ? this.rows.filter((r) => r.id === id) : this.rows);
@@ -246,5 +254,68 @@ describe('FretlaneCloud', () => {
     const reloaded = new Library(root);
     await reloaded.init();
     expect(reloaded.findByCloudId('tab-1')?.id).toBe(song.id);
+  });
+});
+
+describe('Fretlane Premium check', () => {
+  const FUTURE = new Date(Date.now() + 20 * 86_400_000).toISOString();
+  const PAST = new Date(Date.now() - 86_400_000).toISOString();
+
+  it('is off when signed out, without asking the website', async () => {
+    const c = await cloud();
+    expect(await c.premium()).toMatchObject({ premium: false, reason: 'signed-out', pricingUrl: 'https://site.example/pricing' });
+    expect(fake.calls).toEqual([]);
+  });
+
+  it('reads the Stripe subscription and the Ko-fi membership', async () => {
+    const c = await cloud();
+    await signIn(c);
+    expect(await c.premium(true)).toMatchObject({ premium: false, reason: 'no-plan', email: 'me@example.com' });
+    fake.subscription = { status: 'active', current_period_end: FUTURE };
+    expect(await c.premium(true)).toMatchObject({ premium: true, reason: 'active', until: FUTURE });
+    fake.subscription = { status: 'canceled', current_period_end: PAST };
+    fake.kofiEnd = FUTURE;
+    expect(await c.premium(true)).toMatchObject({ premium: true, until: FUTURE });
+    expect(fake.calls).toContain('POST /rest/v1/rpc/my_kofi_membership');
+    expect(fake.calls.some((call) => call.startsWith('GET /rest/v1/subscriptions?select=status,current_period_end'))).toBe(true);
+  });
+
+  it('reuses an answer for a while, and asks again when forced', async () => {
+    const c = await cloud();
+    await signIn(c);
+    fake.subscription = { status: 'active', current_period_end: null };
+    await c.premium();
+    const asked = fake.calls.length;
+    await c.premium();
+    expect(fake.calls.length).toBe(asked);
+    await c.premium(true);
+    expect(fake.calls.length).toBeGreaterThan(asked);
+  });
+
+  it('keeps working offline after a recent active check, across restarts', async () => {
+    let c = await cloud();
+    await signIn(c);
+    fake.subscription = { status: 'active', current_period_end: FUTURE };
+    await c.premium(true);
+    fake.offline = true;
+    c = await cloud();
+    expect(await c.premium()).toMatchObject({ premium: true, reason: 'offline-grace' });
+  });
+
+  it('says offline (not premium) when it never confirmed a plan', async () => {
+    const c = await cloud();
+    await signIn(c);
+    fake.offline = true;
+    expect(await c.premium(true)).toMatchObject({ premium: false, reason: 'offline' });
+  });
+
+  it('forgets the premium answer on sign-out', async () => {
+    const c = await cloud();
+    await signIn(c);
+    fake.subscription = { status: 'active', current_period_end: FUTURE };
+    await c.premium(true);
+    await c.logout();
+    await expect(fs.access(path.join(root, 'premium.json'))).rejects.toThrow();
+    expect(await c.premium()).toMatchObject({ premium: false, reason: 'signed-out' });
   });
 });

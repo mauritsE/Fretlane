@@ -177,7 +177,7 @@ export class Library {
     if (bytes.byteLength > MAX_TAB_BYTES) throw new HttpError(413, 'Tab file is larger than 20 MB.');
     if (bytes.byteLength === 0) throw new HttpError(400, 'Tab is empty.');
 
-    let format: TabFormat = detectTabFormat(sourceName, bytes);
+    let format: TabFormat = input.written ? 'alphatex' : detectTabFormat(sourceName, bytes);
     const title = input.title?.trim() || stripExt(path.basename(sourceName.split('?')[0])) || 'Untitled';
     const artist = input.artist?.trim() || 'Unknown artist';
 
@@ -202,13 +202,14 @@ export class Library {
       audioName: '',
       tabFile,
       tabFormat: format,
-      tabSource: input.tabUrl ?? input.tabFile?.name ?? 'pasted text',
+      tabSource: input.written ? 'written in Fretlane' : input.tabUrl ?? input.tabFile?.name ?? 'pasted text',
       syncPoints: normalizeSyncPoints(cleanSyncPoints(input.syncPoints ?? [])),
       defaultTrack: 0,
       tags: input.tags ?? [],
       favorite: false,
       archivedAt: null,
       ...(input.cloudId ? { cloudId: String(input.cloudId) } : {}),
+      ...(input.written ? { written: true } : {}),
       createdAt: now,
       updatedAt: now,
     };
@@ -242,6 +243,38 @@ export class Library {
     }
     if (patch.syncPoints !== undefined) {
       song.syncPoints = normalizeSyncPoints(cleanSyncPoints(patch.syncPoints));
+    }
+    song.updatedAt = new Date().toISOString();
+    await this.persist();
+    return song;
+  }
+
+  /**
+   * Replaces the tab of a song written in the editor (the editor's autosave). Written atomically, so
+   * a crash mid-save leaves the previous version rather than half a file.
+   */
+  async setTab(id: string, data: AsyncIterable<Uint8Array> | Iterable<Uint8Array>): Promise<Song> {
+    const song = this.get(id);
+    if (!song) throw new HttpError(404, 'Song not found');
+    if (!song.written) throw new HttpError(409, 'Only songs written in Fretlane can be saved from the editor. Make an editable copy first.');
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    for await (const chunk of data) {
+      size += chunk.byteLength;
+      if (size > MAX_TAB_BYTES) throw new HttpError(413, 'Tab file is larger than 20 MB.');
+      chunks.push(chunk);
+    }
+    const bytes = Buffer.concat(chunks);
+    if (!bytes.byteLength) throw new HttpError(400, 'Tab is empty.');
+    // The editor's alphaTex starts with a tag such as \title; anything else (a binary file, HTML) is not from it.
+    if (!new TextDecoder().decode(bytes.subarray(0, 256)).trimStart().startsWith('\\')) throw new HttpError(415, 'The editor saves alphaTex.');
+    const file = this.tabPath(song);
+    const tmp = `${file}.tmp-${randomUUID().slice(0, 8)}`;
+    try {
+      await fs.writeFile(tmp, bytes);
+      await fs.rename(tmp, file);
+    } finally {
+      await fs.rm(tmp, { force: true });
     }
     song.updatedAt = new Date().toISOString();
     await this.persist();

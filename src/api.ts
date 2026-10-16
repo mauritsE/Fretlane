@@ -1,6 +1,7 @@
 import type { NewSongInput, Song, SongPatch } from '../shared/types.ts';
 import type { MediaSearchResponse, MediaSource, PublicSettings } from '../shared/mediaSearch.ts';
 import type { CloudStatus, CloudTabSummary } from '../shared/cloud.ts';
+import type { PremiumStatus } from '../shared/premium.ts';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
@@ -36,6 +37,20 @@ export const api = {
   cloudLogout: () => request<CloudStatus>('/api/cloud/logout', { method: 'POST' }),
   cloudTabs: () => request<CloudTabSummary[]>('/api/cloud/tabs'),
   importCloudTab: (id: string) => request<Song>(`/api/cloud/tabs/${encodeURIComponent(id)}/import`, { method: 'POST' }),
+  /** Fretlane Premium (the tab editor). `refresh` asks the website again instead of the cached answer. */
+  premium: (refresh = false) => request<PremiumStatus>('/api/premium', refresh ? { method: 'POST' } : undefined),
+  /** Saves a written song's tab (alphaTex). `keepalive` lets the save finish while the page closes. */
+  async saveTab(id: string, tex: string, keepalive = false): Promise<Song> {
+    const res = await fetch(`/api/songs/${encodeURIComponent(id)}/tab`, {
+      method: 'PUT',
+      body: tex,
+      headers: { 'content-type': 'text/plain; charset=utf-8' },
+      keepalive,
+    });
+    const body = (await res.json().catch(() => ({}))) as Song & { error?: string };
+    if (!res.ok) throw new Error(body.error ?? `Could not save the tab (${res.status})`);
+    return body;
+  },
   /** Uploads the user's own recording (raw bytes, not JSON: WAV files are big). */
   async uploadAudio(id: string, file: File): Promise<Song> {
     const res = await fetch(`/api/songs/${encodeURIComponent(id)}/audio`, {

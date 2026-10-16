@@ -42,6 +42,8 @@ export interface Song {
   archivedAt: string | null;
   /** Id of the Fretlane Cloud tab this song was imported from, when it came from the cloud. */
   cloudId?: string;
+  /** Written in Fretlane's tab editor (Premium): the tab is alphaTex the editor can open again. */
+  written?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -60,6 +62,8 @@ export interface NewSongInput {
   syncPoints?: SyncPoint[];
   /** Set when the tab comes from Fretlane Cloud. */
   cloudId?: string;
+  /** Written in the tab editor; the tab must be alphaTex (tabText or a .atex tabFile). */
+  written?: boolean;
 }
 
 export type SongPatch = Partial<Pick<Song, 'title' | 'artist' | 'youtubeId' | 'syncPoints' | 'defaultTrack' | 'tags' | 'favorite'>> & {

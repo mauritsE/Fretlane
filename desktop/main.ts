@@ -53,7 +53,15 @@ function appFile(...parts: string[]): string {
 }
 
 async function startLibraryServer(): Promise<RunningServer> {
-  const opts = { host: '127.0.0.1', libraryDir: libraryDir(), assets: dirAssets(appFile('dist')), seed: appFile('demo') };
+  const opts = {
+    host: '127.0.0.1',
+    libraryDir: libraryDir(),
+    assets: dirAssets(appFile('dist')),
+    seed: appFile('demo'),
+    // The Mac App Store build is paid up front and may not unlock features with an outside
+    // purchase, so the tab editor is simply included there (no Fretlane Cloud plan check).
+    premiumIncluded: !!process.mas,
+  };
   // A fixed port keeps the page's origin stable between runs; fall back to the next ones if taken.
   for (let port = FIRST_PORT; port < FIRST_PORT + PORT_ATTEMPTS; port++) {
     try {

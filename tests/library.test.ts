@@ -313,6 +313,29 @@ describe('Library', () => {
     await fs.writeFile(path.join(root, 'songs.json'), '{not json');
     await expect(new Library(root).init(SEED)).rejects.toThrow();
   });
+
+  it('stores songs written in the editor as alphaTex and saves new versions of them', async () => {
+    const lib = await fresh(false);
+    const tex = '\\title "Mine"\n\\track "Guitar"\n\\staff {tabs}\n3.6.1 |\n';
+    const song = await lib.add({ title: 'Mine', artist: 'Me', written: true, tabText: tex });
+    expect(song).toMatchObject({ written: true, tabFormat: 'alphatex', tabSource: 'written in Fretlane' });
+    expect(song.tabFile.endsWith('.atex')).toBe(true);
+    const next = tex.replace('3.6.1', '5.6.1');
+    const saved = await lib.setTab(song.id, [new TextEncoder().encode(next)]);
+    expect(await fs.readFile(lib.tabPath(saved), 'utf8')).toBe(next);
+    expect(await fs.readdir(path.join(root, 'tabs'))).toEqual([song.tabFile]); // no temp files left
+  });
+
+  it('only saves editor output over songs written in the editor', async () => {
+    const lib = await fresh(false);
+    const imported = await lib.add({ tabText: ASCII });
+    await expect(lib.setTab(imported.id, [new TextEncoder().encode('\\title "x"')])).rejects.toMatchObject({ status: 409 });
+    const written = await lib.add({ written: true, tabText: '\\title "W"\n3.6.1 |' });
+    await expect(lib.setTab(written.id, [new Uint8Array([0x50, 0x4b, 3, 4])])).rejects.toMatchObject({ status: 415 });
+    await expect(lib.setTab(written.id, [])).rejects.toMatchObject({ status: 400 });
+    await expect(lib.setTab('nope', [])).rejects.toMatchObject({ status: 404 });
+    expect(await fs.readFile(lib.tabPath(written), 'utf8')).toBe('\\title "W"\n3.6.1 |');
+  });
 });
 
 /** A mono 16-bit PCM WAV of silence. */
