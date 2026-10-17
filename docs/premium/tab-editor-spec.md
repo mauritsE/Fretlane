@@ -105,10 +105,11 @@ validation and the save path. M0 measured the re-render cost; see
 - Cloud sync and version history for written songs.
 - Edit imported tabs (see the open questions on round-trip fidelity).
 - A second voice per staff.
-- Drum track entry.
+- Drum track entry. (*Built*: drum tracks with a fixed kit, typed with ↑ ↓ and a digit; no drum techniques yet.)
 - Lyrics under the tab.
 - **Riff assistant** (*built*, after v1): select bars and ask Claude to improve them, or describe a
-  riff and have Claude write it at the cursor. See `shared/editor/assistant.ts`.
+  riff and have Claude write it at the cursor; on request it also writes a second guitar, a bass line
+  and drums, each on its own track. See `shared/editor/assistant.ts`.
 - Record a riff, then turn it into notes. This needs pitch detection on the user's own audio
   and is the most distinctive item here; it needs a separate spike.
 

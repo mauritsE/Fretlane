@@ -190,6 +190,8 @@ export function moveBar(doc: SongDoc, c: Cursor, dir: 1 | -1): Edit {
 /** Puts a fret on the cursor string. A rest becomes a note of the toolbar's duration. */
 export function typeFret(doc: SongDoc, c: Cursor, fret: number, entry: Entry): Edit {
   if (!Number.isInteger(fret) || fret < 0 || fret > MAX_FRET) return same(doc, c, `Frets go from 0 to ${MAX_FRET}.`);
+  // On drums any digit is a hit on the cursor's drum; there are no frets.
+  if (doc.tracks[c.track]?.kind === 'drums') fret = 0;
   const beats = voice(doc, c);
   const beat = beats[c.beat];
   if (!beat) return same(doc, c);
@@ -298,6 +300,7 @@ export const NOTE_FLAG_LABELS: Record<NoteFlag, string> = {
 
 /** Switches a technique on or off for the note under the cursor. */
 export function toggleNoteFlag(doc: SongDoc, c: Cursor, flag: NoteFlag): Edit {
+  if (doc.tracks[c.track]?.kind === 'drums') return same(doc, c, 'Techniques are for guitar and bass.');
   const beats = voice(doc, c).slice();
   const beat = beats[c.beat];
   const note = beat?.notes.find((n) => n.string === c.string);

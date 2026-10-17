@@ -12,7 +12,40 @@ import { QUARTER } from '../music.ts';
 export const DURATIONS = [1, 2, 4, 8, 16, 32] as const;
 export type DurationValue = (typeof DURATIONS)[number];
 
-export type TrackKind = 'guitar' | 'bass';
+export type TrackKind = 'guitar' | 'bass' | 'drums';
+
+/**
+ * The drum kit of a drum track, one lane per piece in the order a drum staff reads them (cymbals on
+ * top, kick at the bottom). A drum track stores the pieces' General MIDI percussion numbers as its
+ * `tuning` and a hit as a note whose `string` is the lane (1 = crash), so the cursor, chords, rests
+ * and every bar edit work on drums the same way as on strings. The fret of a hit is always 0.
+ */
+export const DRUM_KIT = [
+  { id: 'crash', name: 'Crash', midi: 49 },
+  { id: 'ride', name: 'Ride', midi: 51 },
+  { id: 'openHiHat', name: 'Open hi-hat', midi: 46 },
+  { id: 'closedHiHat', name: 'Hi-hat', midi: 42 },
+  { id: 'pedalHiHat', name: 'Pedal hi-hat', midi: 44 },
+  { id: 'highTom', name: 'High tom', midi: 50 },
+  { id: 'midTom', name: 'Mid tom', midi: 47 },
+  { id: 'snare', name: 'Snare', midi: 38 },
+  { id: 'sideStick', name: 'Side stick', midi: 37 },
+  { id: 'floorTom', name: 'Floor tom', midi: 43 },
+  { id: 'kick', name: 'Kick', midi: 36 },
+] as const;
+export type DrumId = (typeof DRUM_KIT)[number]['id'];
+export const DRUM_TUNING: number[] = DRUM_KIT.map((d) => d.midi);
+
+/** The lane (1-based, like a string) of a drum piece, or 0 when the kit doesn't have it. */
+export function drumLane(id: string): number {
+  return DRUM_KIT.findIndex((d) => d.id === id) + 1;
+}
+
+/** Name of what a lane or string plays: "Snare" on drums, "E2" on strings. */
+export function laneName(track: DocTrack, lane: number): string {
+  if (track.kind === 'drums') return DRUM_KIT.find((d) => d.midi === track.tuning[lane - 1])?.name ?? `Drum ${track.tuning[lane - 1]}`;
+  return pitchName(track.tuning[lane - 1]);
+}
 
 export interface DocNote {
   /** alphaTex string number: 1 = the highest string (top line of the tab). */
@@ -171,11 +204,13 @@ export const TUNING_PRESETS: TuningPreset[] = [
   { id: 'bass-standard', label: 'Standard (E A D G)', kind: 'bass', tuning: [43, 38, 33, 28] },
   { id: 'bass-drop-d', label: 'Drop D (D A D G)', kind: 'bass', tuning: [43, 38, 33, 26] },
   { id: 'bass-5-standard', label: '5-string (B E A D G)', kind: 'bass', tuning: [43, 38, 33, 28, 23] },
+  { id: 'drum-kit', label: 'Drum kit', kind: 'drums', tuning: DRUM_TUNING },
 ];
 
 export const DEFAULT_SOUND: Record<TrackKind, string> = {
   guitar: 'electricguitarclean',
   bass: 'electricbassfinger',
+  drums: 'percussion',
 };
 
 /** Sounds offered per track kind (General MIDI names, as alphaTex spells them). */
@@ -194,6 +229,7 @@ export const SOUNDS: Record<TrackKind, { id: string; label: string }[]> = {
     { id: 'fretlessbass', label: 'Fretless' },
     { id: 'acousticbass', label: 'Acoustic bass' },
   ],
+  drums: [{ id: 'percussion', label: 'Drum kit' }],
 };
 
 const NOTE_NAMES = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'];
@@ -209,6 +245,7 @@ export function pitchName(midi: number): string {
  * lowest string for the instrument. Returns MIDI pitches highest string first, or null.
  */
 export function parseTuning(text: string, kind: TrackKind): number[] | null {
+  if (kind === 'drums') return null;
   const parts = text.trim().split(/[\s,]+/).filter(Boolean);
   if (parts.length < 4 || parts.length > 8) return null;
   const pcs: Record<string, number> = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 };

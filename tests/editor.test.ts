@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import * as alphaTab from '@coderline/alphatab';
 import {
+  DRUM_TUNING,
   TUNING_PRESETS,
   barStatus,
+  drumLane,
+  laneName,
   barTicks,
   beatTicks,
   describeTicks,
@@ -433,10 +436,34 @@ describe('editor ⇄ alphaTab', () => {
 \track "Drums"
 \instrument percussion
 \staff {score}
-:4 36 38 36 38 |`;
+(36 42).4 38 (36 57) 38 |`;
     const { doc, dropped } = scoreToDoc(parse(tex));
-    expect(doc.tracks.map((t) => t.name)).toEqual(['Gtr']);
-    expect(dropped).toEqual(expect.arrayContaining(['track "Drums" (drums)', 'grace notes']));
+    expect(doc.tracks.map((t) => `${t.name}:${t.kind}`)).toEqual(['Gtr:guitar', 'Drums:drums']);
+    expect(dropped).toEqual(expect.arrayContaining(['grace notes', "drum sounds the editor's kit doesn't have"]));
+    // Hits are lanes of the editor's kit (1 = crash … 11 = kick); 57 (crash 2) isn't in it.
+    const lanes = doc.bars[0].tracks[1].map((b) => b.notes.map((n) => laneName(doc.tracks[1], n.string)).join('+'));
+    expect(lanes).toEqual(['Hi-hat+Kick', 'Snare', 'Kick', 'Snare']);
+  });
+
+  it('writes drum tracks as notation with one-note chords, and reads them back', () => {
+    let doc = song([GUITAR], 1);
+    doc = addTrack(doc, START, { name: 'Drums', kind: 'drums', sound: 'percussion', tuning: DRUM_TUNING }).doc;
+    const c: Cursor = { track: 1, bar: 0, beat: 0, string: drumLane('kick') };
+    // Any digit is a hit on the cursor's drum; techniques are refused.
+    doc = typeFret(doc, c, 7, { duration: 8 }).doc;
+    doc = typeFret(doc, { ...c, string: drumLane('closedHiHat') }, 3, { duration: 8 }).doc;
+    doc = typeFret(doc, { ...c, beat: 1, string: drumLane('snare') }, 0, { duration: 8 }).doc;
+    expect(doc.bars[0].tracks[1][0].notes).toEqual([{ string: 4, fret: 0 }, { string: 11, fret: 0 }]);
+    expect(toggleNoteFlag(doc, c, 'hammer').message).toMatch(/guitar and bass/);
+    const tex = docToTex(doc);
+    expect(tex).toContain('\\instrument percussion\n\\staff {score}\n\\clef neutral');
+    expect(tex).toContain('(42 36).8 (38).8');
+    const score = parse(tex);
+    const drums = score.tracks[1];
+    const midi = drums.staves[0].bars[0].voices[0].beats[0].notes.map((n) => drums.percussionArticulations[n.percussionArticulation].outputMidiNumber);
+    expect(midi.sort()).toEqual([36, 42]);
+    expect(barStatus(doc, 1, 0).diff).toBe(0);
+    expect(docToTex(scoreToDoc(score).doc)).toBe(tex);
   });
 
   it('opens the demo songs, which were not written in the editor', () => {
