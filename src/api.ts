@@ -1,6 +1,6 @@
 import type { NewSongInput, Song, SongPatch } from '../shared/types.ts';
 import type { MediaSearchResponse, MediaSource, PublicSettings } from '../shared/mediaSearch.ts';
-import type { CloudStatus, CloudTabSummary } from '../shared/cloud.ts';
+import type { CloudStatus, CloudSyncStatus, CloudTabSummary } from '../shared/cloud.ts';
 import type { PremiumStatus } from '../shared/premium.ts';
 import type { RiffRequest } from '../shared/editor/assistant.ts';
 
@@ -37,6 +37,7 @@ export const api = {
   cloudLogin: (origin: string) => request<{ url: string }>('/api/cloud/login', { method: 'POST', body: JSON.stringify({ origin }) }),
   cloudLogout: () => request<CloudStatus>('/api/cloud/logout', { method: 'POST' }),
   cloudTabs: () => request<CloudTabSummary[]>('/api/cloud/tabs'),
+  cloudSync: (songId: string) => request<CloudSyncStatus>(`/api/cloud/sync/${encodeURIComponent(songId)}`),
   importCloudTab: (id: string) => request<Song>(`/api/cloud/tabs/${encodeURIComponent(id)}/import`, { method: 'POST' }),
   /** Fretlane Premium (the tab editor). `refresh` asks the website again instead of the cached answer. */
   premium: (refresh = false) => request<PremiumStatus>('/api/premium', refresh ? { method: 'POST' } : undefined),

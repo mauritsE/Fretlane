@@ -281,6 +281,19 @@ export class Library {
     return song;
   }
 
+  /**
+   * Records a Fretlane Cloud backup of the song as it was at `version` (its `updatedAt` then). It
+   * does not count as a change to the song, so it leaves `updatedAt` alone.
+   */
+  async markCloudSynced(id: string, cloudId: string, version: string): Promise<Song | undefined> {
+    const song = this.get(id);
+    if (!song) return undefined;
+    song.cloudId = cloudId;
+    song.cloudSyncedAt = version;
+    await this.persist();
+    return song;
+  }
+
   async remove(id: string): Promise<void> {
     const song = this.get(id);
     if (!song) throw new HttpError(404, 'Song not found');

@@ -3,10 +3,18 @@ import type { Song } from '../shared/types.ts';
 import { APP_NAME } from '../shared/brand.ts';
 import {
   DURATIONS,
+  INSTRUMENTS,
   TIME_SIGNATURES,
   barStatus,
   describeTicks,
+  drumLaneAt,
+  drumLaneName,
+  drumStaffLine,
+  drumTrack,
+  instrumentLabel,
+  isDrums,
   pitchName,
+  startString,
   type DocBar,
   type DocTrack,
   type DurationValue,
@@ -31,7 +39,7 @@ import type { Cursor, Edit, Entry, NoteFlag } from '../shared/editor/commands.ts
 import { api } from './api.ts';
 import { h, toast } from './dom.ts';
 import { metronomeButton } from './metronome.ts';
-import { pluck } from './pluck.ts';
+import { drumHit, pluck } from './pluck.ts';
 import { ensurePremium } from './premiumView.ts';
 import { makeEditableCopy, soundSelect, tuningField } from './writeDialog.ts';
 
@@ -66,6 +74,7 @@ const FLAG_BUTTONS: { flag: NoteFlag; label: string; key: string }[] = [
 
 const SHORTCUTS: [string, string][] = [
   ['0 – 9', 'Fret on the cursor string (type two digits quickly for 10 – 30)'],
+  ['Enter or 0 – 9', 'On a drum track: a hit on the drum under the cursor (↑ ↓ pick the drum)'],
   ['← →', 'Previous / next beat (→ at the end adds a bar)'],
   ['↑ ↓', 'String up / down'],
   ['Ctrl + ← →', 'Previous / next bar'],
@@ -89,6 +98,11 @@ const IMPROVE_IDEAS = ['Make it heavier', 'More groove', 'Easier to play', 'Add 
 const GENERATE_IDEAS: Record<TrackKind, string[]> = {
   guitar: ['Palm-muted chug, in the style of 2000s metal', 'Funky sixteenth-note riff in E minor', 'Bluesy shuffle in A', 'Slow, dark doom riff', 'Bright arpeggios, let ring'],
   bass: ['Driving eighth-note bass line in E', 'Funky slap-style groove in A', 'Walking blues bass line in G', 'Simple root-fifth groove for a chorus'],
+  ukulele: ['Happy island strum in C', 'Fingerpicked melody in G', 'Campfire chord progression in F'],
+  mandolin: ['Bluegrass tremolo melody in G', 'Celtic jig in D', 'Fast crosspicked lick in A'],
+  banjo: ['Forward roll in G', 'Old-time clawhammer tune in D', 'Bluegrass lick in A'],
+  // The assistant writes tab; drum tracks don't get it (yet).
+  drums: [],
 };
 
 function parseTex(tex: string): alphaTab.model.Score {
@@ -140,7 +154,7 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
   const cleanups: Cleanup[] = [];
   const history = new cmd.History();
   const firstTrack = Math.min(song.defaultTrack, doc.tracks.length - 1);
-  let cursor: Cursor = { track: firstTrack, bar: 0, beat: 0, string: doc.tracks[firstTrack].tuning.length };
+  let cursor: Cursor = { track: firstTrack, bar: 0, beat: 0, string: startString(doc.tracks[firstTrack]) };
   let entry: Entry = { duration: 8 };
   /** Bar selection for copy, delete and loop: anchor bar + the cursor bar. */
   let selectAnchor: number | null = null;
@@ -151,6 +165,7 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
   // ---------- layout ----------
   const titleEl = h('button.song-heading.link', { title: 'Song title, artist and tempo' });
   const saveEl = h('span.save-state', {}, 'Saved');
+  const cloudEl = h('span.cloud-state.hidden');
   const undoBtn = h('button.icon', { title: 'Undo (Ctrl+Z)' }, '↶');
   const redoBtn = h('button.icon', { title: 'Redo (Ctrl+Shift+Z)' }, '↷');
   const trackList = h('ul.track-list');
@@ -202,6 +217,7 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
       titleEl,
       h('span.spacer'),
       saveEl,
+      cloudEl,
       undoBtn,
       redoBtn,
       metronomeButton(),
@@ -218,7 +234,7 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
         h('h3', {}, 'Tracks'),
         trackList,
         h('button.add-track', { onclick: () => openTrackDialog(null) }, '+ Track'),
-        h('p.hint.sidebar-hint', {}, 'Type fret numbers. Arrows move. Press ? for all keys.'),
+        h('p.hint.sidebar-hint', {}, 'Type fret numbers (on drums: Enter). Arrows move. Press ? for all keys.'),
         aiPanel,
       ),
       h(
@@ -361,6 +377,12 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
     current = parseTex(docToTex(doc));
     const sameTrack = renderedTrack === cursor.track;
     renderedTrack = cursor.track;
+    // Tab only for strings; a drum track has no tab staff, so it shows its drum staff.
+    const profile = isDrums(doc.tracks[cursor.track]) ? alphaTab.StaveProfile.Score : alphaTab.StaveProfile.Tab;
+    if (at.settings.display.staveProfile !== profile) {
+      at.settings.display.staveProfile = profile;
+      at.updateSettings();
+    }
     const hints: NonNullable<Parameters<typeof at.renderScore>[2]> = { reuseViewport: true };
     if (sameTrack && changedBar > 0) hints.firstChangedMasterBar = changedBar;
     at.renderScore(current, [cursor.track], hints);
@@ -412,7 +434,8 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
     if (at.playerState === alphaTab.synth.PlayerState.Playing) return;
     const track = doc.tracks[cursor.track];
     const note = beatAtCursor()?.notes.find((n) => n.string === cursor.string);
-    if (note && !note.dead) pluck([track.tuning[note.string - 1] + note.fret]);
+    if (note && isDrums(track)) drumHit([track.tuning[note.string - 1]]);
+    else if (note && !note.dead) pluck([track.tuning[note.string - 1] + note.fret]);
   }
 
   // ---------- saving ----------
@@ -440,6 +463,7 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
       // Browsers refuse keepalive bodies over 64 KB; a long song then saves without it.
       song = await api.saveTab(song.id, tex, keepalive && tex.length < 60_000);
       if (!dirty) saveEl.textContent = 'Saved';
+      if (!keepalive) watchCloud();
     } catch (err) {
       dirty = true;
       saveEl.textContent = 'Not saved';
@@ -450,6 +474,40 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
       saving = false;
     }
   }
+  // ---------- Fretlane Cloud backup ----------
+  // The server uploads written songs a few seconds after they change (server/cloudSync.ts); this
+  // only shows how that stands, asking again while an upload is waiting or running.
+  let cloudTimer: number | undefined;
+  let cloudGone = false;
+  cleanups.push(() => {
+    cloudGone = true;
+    window.clearTimeout(cloudTimer);
+  });
+  function watchCloud(delay = 0): void {
+    window.clearTimeout(cloudTimer);
+    cloudTimer = window.setTimeout(async () => {
+      let status: Awaited<ReturnType<typeof api.cloudSync>>;
+      try {
+        status = await api.cloudSync(song.id);
+      } catch {
+        return;
+      }
+      if (cloudGone) return;
+      cloudEl.classList.toggle('hidden', status.state === 'off');
+      cloudEl.classList.toggle('error', status.state === 'error');
+      cloudEl.textContent = { off: '', pending: '☁ …', syncing: '☁ Syncing…', synced: '☁ Synced', error: '☁ Not synced' }[status.state];
+      cloudEl.title =
+        status.state === 'error'
+          ? `Not backed up to Fretlane Cloud: ${status.message ?? 'unknown error'}`
+          : status.state === 'synced'
+            ? 'Backed up to your Fretlane Cloud library'
+            : 'Backing up to your Fretlane Cloud library';
+      if (status.state === 'pending' || status.state === 'syncing') watchCloud(2000);
+      else if (status.state === 'error') watchCloud(30_000);
+    }, delay);
+  }
+  watchCloud();
+
   const onUnload = () => void save(true);
   window.addEventListener('beforeunload', onUnload);
   cleanups.push(() => {
@@ -478,10 +536,11 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
     dotBtn.classList.toggle('active', !!entry.dotted);
     tripletBtn.classList.toggle('active', !!entry.triplet);
     const note = beatAtCursor()?.notes.find((n) => n.string === cursor.string);
+    const drums = isDrums(doc.tracks[cursor.track]);
     for (const btn of flagBtns) {
       const flag = btn.dataset.flag as NoteFlag;
       btn.classList.toggle('active', !!note?.[flag]);
-      btn.disabled = !note;
+      btn.disabled = !note || drums;
     }
     const bar = doc.bars[cursor.bar];
     tsSel.value = bar.ts.join('/');
@@ -499,11 +558,12 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
   }
 
   function drawStatus(): void {
-    const tuning = doc.tracks[cursor.track].tuning;
+    const track = doc.tracks[cursor.track];
     const beats = doc.bars[cursor.bar].tracks[cursor.track].length;
     const r = selection();
+    const where = isDrums(track) ? drumLaneName(track.tuning[cursor.string - 1]) : `String ${cursor.string} (${pitchName(track.tuning[cursor.string - 1])})`;
     posEl.textContent =
-      `Bar ${cursor.bar + 1}/${doc.bars.length} · Beat ${cursor.beat + 1}/${beats} · String ${cursor.string} (${pitchName(tuning[cursor.string - 1])})` +
+      `Bar ${cursor.bar + 1}/${doc.bars.length} · Beat ${cursor.beat + 1}/${beats} · ${where}` +
       (r.from !== r.to ? ` · Bars ${r.from + 1}–${r.to + 1} selected` : '');
     const st = barStatus(doc, cursor.track, cursor.bar);
     warnEl.textContent = st.diff ? `⚠ Bar ${cursor.bar + 1} is ${describeTicks(st.diff)} ${st.diff < 0 ? 'short' : 'too long'}` : '';
@@ -518,13 +578,13 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
             class: i === cursor.track ? 'active' : '',
             onclick: () => {
               if (i === cursor.track) return;
-              cursor = cmd.clampCursor(doc, { ...cursor, track: i, beat: 0, string: t.tuning.length });
+              cursor = cmd.clampCursor(doc, { ...cursor, track: i, beat: 0, string: startString(t) });
               render(0);
               afterChange(-1);
             },
           },
           h('span.track-name', {}, t.name),
-          h('small', {}, `${t.kind === 'bass' ? 'Bass' : 'Guitar'} · ${[...t.tuning].reverse().map((p) => pitchName(p).replace(/-?\d+$/, '')).join(' ')}`),
+          h('small', {}, isDrums(t) ? 'Drums · kit' : `${instrumentLabel(t.kind)} · ${[...t.tuning].reverse().map((p) => pitchName(p).replace(/-?\d+$/, '')).join(' ')}`),
           h(
             'span.track-buttons',
             {},
@@ -557,12 +617,20 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
 
   /**
    * Where a string line is drawn in a bar. The tab staff's lines are evenly spaced across the bar's
-   * visual bounds (checked against note heads in the browser test).
+   * visual bounds (checked against note heads in the browser test). A drum staff has five lines
+   * across its bounds, and each drum sits at its own staff position in half spaces.
    */
   function stringY(bb: alphaTab.rendering.BarBounds, string: number): number {
-    const strings = doc.tracks[cursor.track].tuning.length;
+    const track = doc.tracks[cursor.track];
     const { y, h: height } = bb.visualBounds;
-    return y + ((string - 1) * height) / Math.max(1, strings - 1);
+    if (isDrums(track)) return y + (drumStaffLine(track.tuning[string - 1]) * height) / 8;
+    return y + ((string - 1) * height) / Math.max(1, track.tuning.length - 1);
+  }
+
+  /** The distance between two strings, or half a staff space on a drum staff. */
+  function lineStep(bb: alphaTab.rendering.BarBounds): number {
+    const track = doc.tracks[cursor.track];
+    return isDrums(track) ? bb.visualBounds.h / 8 : bb.visualBounds.h / Math.max(1, track.tuning.length - 1);
   }
 
   function drawOverlay(): void {
@@ -587,10 +655,14 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
     const bb = barBounds(cursor.bar);
     const beat = bb?.beats.find((b) => b.beat.voice.index === 0 && b.beat.index === cursor.beat);
     if (bb && beat) {
-      const lineH = bb.visualBounds.h / Math.max(1, doc.tracks[cursor.track].tuning.length - 1);
-      const size = Math.max(14, lineH * 0.95);
+      const drums = isDrums(doc.tracks[cursor.track]);
+      const lineH = lineStep(bb);
+      const size = Math.max(drums ? 10 : 14, lineH * (drums ? 1.9 : 0.95));
       const x = beat.onNotesX || beat.visualBounds.x + beat.visualBounds.w / 2;
-      marks.push(box('beat-col', x - size / 2 - 3, bb.visualBounds.y - lineH / 2, size + 6, bb.visualBounds.h + lineH));
+      // The drum column also covers the cymbals above the staff and the hi-hat pedal below it.
+      const top = drums ? bb.visualBounds.y - 3 * lineH : bb.visualBounds.y - lineH / 2;
+      const bottom = drums ? bb.visualBounds.y + bb.visualBounds.h + 2 * lineH : bb.visualBounds.y + bb.visualBounds.h + lineH / 2;
+      marks.push(box('beat-col', x - size / 2 - 3, top, size + 6, bottom - top));
       const y = stringY(bb, cursor.string);
       const caret = box('caret', x - size / 2, y - size / 2, size, size);
       marks.push(caret);
@@ -624,9 +696,9 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
     const bb = barBounds(bar);
     let string = cursor.string;
     if (bb) {
-      const strings = doc.tracks[cursor.track].tuning.length;
-      const step = bb.visualBounds.h / Math.max(1, strings - 1);
-      string = Math.round((y - bb.visualBounds.y) / step) + 1;
+      const track = doc.tracks[cursor.track];
+      const pos = (y - bb.visualBounds.y) / lineStep(bb);
+      string = isDrums(track) ? drumLaneAt(pos, track.tuning) : Math.round(pos) + 1;
     }
     if (e.shiftKey) selectAnchor ??= cursor.bar;
     else selectAnchor = null;
@@ -703,6 +775,7 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
     const key = e.key;
     let handled = true;
     if (/^[0-9]$/.test(key) && !ctrl && !e.altKey) typeDigit(Number(key));
+    else if (key === 'Enter' && !ctrl && isDrums(doc.tracks[cursor.track])) apply(cmd.typeFret(doc, cursor, 0, entry), { audition: true });
     else if (key === 'ArrowRight' || key === 'ArrowLeft') {
       const dir = key === 'ArrowRight' ? 1 : -1;
       lastDigit = null;
@@ -860,18 +933,30 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
   function openTrackDialog(index: number | null): void {
     const existing = index === null ? null : doc.tracks[index];
     let kind: TrackKind = existing?.kind ?? 'guitar';
-    const name = h('input', { value: existing?.name ?? '', placeholder: 'Guitar 2' });
-    const kindSel = h('select', { disabled: !!existing }, h('option', { value: 'guitar', selected: kind === 'guitar' }, 'Guitar'), h('option', { value: 'bass', selected: kind === 'bass' }, 'Bass'));
+    const name = h('input', { value: existing?.name ?? '', placeholder: defaultTrackName(kind) });
+    const kindSel = h('select', { disabled: !!existing, 'aria-label': 'Instrument' }, ...INSTRUMENTS.map((i) => h('option', { value: i.kind, selected: kind === i.kind }, i.label)));
     let tuning = tuningField(kind, existing?.tuning);
     let sound = soundSelect(kind, existing?.sound);
     const tuningHost = h('label', {}, 'Tuning', tuning.el);
     const soundHost = h('label', {}, 'Sound', sound);
+    const hint = h('small.hint');
+    const showKind = () => {
+      const drums = kind === 'drums';
+      tuningHost.classList.toggle('hidden', drums);
+      soundHost.classList.toggle('hidden', drums);
+      hint.textContent = drums
+        ? 'A full kit: crash, hi-hat, ride, toms, snare, kick and hi-hat pedal. ↑ ↓ pick the drum, Enter or a number key adds a hit.'
+        : 'Retuning keeps the frets you wrote, so the notes sound in the new tuning.';
+      name.placeholder = defaultTrackName(kind);
+    };
+    showKind();
     kindSel.onchange = () => {
       kind = kindSel.value as TrackKind;
       tuning = tuningField(kind);
       sound = soundSelect(kind);
       tuningHost.replaceChildren('Tuning', tuning.el);
       soundHost.replaceChildren('Sound', sound);
+      showKind();
     };
     const remove =
       index !== null && doc.tracks.length > 1
@@ -891,21 +976,36 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
         : null;
     dialogShell(
       existing ? 'Track settings' : 'Add a track',
-      [h('label', {}, 'Name', name), h('label', {}, 'Instrument', kindSel), tuningHost, soundHost, h('small.hint', {}, 'Retuning keeps the frets you wrote, so the notes sound in the new tuning.')],
+      [h('label', {}, 'Name', name), h('label', {}, 'Instrument', kindSel), tuningHost, soundHost, hint],
       () => {
+        if (kind === 'drums') {
+          if (existing && index !== null) apply(cmd.updateTrack(doc, cursor, index, { name: name.value }));
+          else {
+            renderedTrack = -1;
+            apply(cmd.addTrack(doc, cursor, drumTrack(name.value.trim() || defaultTrackName(kind))));
+          }
+          return true;
+        }
         const t = tuning.value();
         if (!t) throw new Error('Type the tuning as note names, lowest string first (4 to 8 strings).');
         if (existing && index !== null) {
           renderedTrack = -1;
           apply(cmd.updateTrack(doc, cursor, index, { name: name.value, sound: sound.value, tuning: t }));
         } else {
-          const track: DocTrack = { name: name.value.trim() || (kind === 'bass' ? 'Bass' : `Guitar ${doc.tracks.filter((x) => x.kind === 'guitar').length + 1}`), kind, sound: sound.value, tuning: t };
+          const track: DocTrack = { name: name.value.trim() || defaultTrackName(kind), kind, sound: sound.value, tuning: t };
           apply(cmd.addTrack(doc, cursor, track));
         }
         return true;
       },
       remove ? [remove] : [],
     );
+  }
+
+  /** "Guitar 2" when the song already has a guitar, else "Guitar". */
+  function defaultTrackName(kind: TrackKind): string {
+    const label = instrumentLabel(kind);
+    const count = doc.tracks.filter((t) => t.kind === kind).length;
+    return count ? `${label} ${count + 1}` : label;
   }
 
   function showHelp(): void {
@@ -956,6 +1056,17 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
   }
 
   function drawAssistant(): void {
+    const drums = isDrums(doc.tracks[cursor.track]);
+    aiPanel.classList.toggle('disabled', drums);
+    if (drums) {
+      aiMode.textContent = 'The riff assistant writes guitar, bass and other string parts. Pick a string track to use it.';
+      aiGo.disabled = true;
+      aiPrompt.disabled = true;
+      aiBarsLabel.classList.add('hidden');
+      aiIdeas.replaceChildren();
+      aiShownMode = '';
+      return;
+    }
     const improving = selectAnchor !== null;
     const r = selection();
     const count = r.to - r.from + 1;
@@ -986,6 +1097,7 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
       aiBusy.abort();
       return;
     }
+    if (isDrums(doc.tracks[again && lastAi ? lastAi.track : cursor.track])) return;
     let request: RiffRequest;
     let target: RiffTarget;
     let track: number;

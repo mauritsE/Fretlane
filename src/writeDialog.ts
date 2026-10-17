@@ -5,6 +5,7 @@ import {
   SOUNDS,
   TIME_SIGNATURES,
   TUNING_PRESETS,
+  drumTrack,
   newSongDoc,
   parseTuning,
   pitchName,
@@ -72,6 +73,7 @@ export function openNewSongDialog(): void {
   const ts = h('select', { name: 'ts' }, ...TIME_SIGNATURES.map((t) => h('option', { value: t.join('/') }, t.join('/'))));
   const gtrOn = h('input', { type: 'checkbox', checked: true });
   const bassOn = h('input', { type: 'checkbox' });
+  const drumsOn = h('input', { type: 'checkbox' });
   const gtrTuning = tuningField('guitar');
   const bassTuning = tuningField('bass');
   const gtrSound = soundSelect('guitar');
@@ -97,6 +99,7 @@ export function openNewSongDialog(): void {
             if (!tuning) throw new Error('Type the bass tuning as note names, lowest string first (4 to 8 strings).');
             tracks.push({ name: 'Bass', kind: 'bass', sound: bassSound.value, tuning });
           }
+          if (drumsOn.checked) tracks.push(drumTrack());
           if (!tracks.length) throw new Error('Pick at least one instrument.');
           const [num, den] = ts.value.split('/').map(Number) as [number, number];
           const doc = newSongDoc({ title: title.value, artist: artist.value, tempo: Number(tempo.value), ts: [num, den], tracks });
@@ -122,7 +125,8 @@ export function openNewSongDialog(): void {
       h('legend', {}, 'Instruments'),
       h('div.instrument-row', {}, h('label.check', {}, gtrOn, 'Guitar'), gtrTuning.el, gtrSound),
       h('div.instrument-row', {}, h('label.check', {}, bassOn, 'Bass'), bassTuning.el, bassSound),
-      h('small.hint', {}, 'You can add, retune or remove tracks later in the editor.'),
+      h('div.instrument-row', {}, h('label.check', {}, drumsOn, 'Drums'), h('small.hint', {}, 'Full kit')),
+      h('small.hint', {}, 'Ukulele, mandolin, banjo and extra tracks can be added in the editor with + Track.'),
     ),
     status,
     h('div.dialog-actions', {}, h('button', { type: 'button', onclick: () => dialog.close() }, 'Cancel'), submit),

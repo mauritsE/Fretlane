@@ -4,7 +4,21 @@
  * and lists what it had to leave out.
  */
 import type * as alphaTab from '@coderline/alphatab';
-import { DEFAULT_SOUND, DURATIONS, clampTempo, type DocBar, type DocBeat, type DocNote, type DocTrack, type DurationValue, type SongDoc, type TrackKind } from './doc.ts';
+import {
+  DEFAULT_SOUND,
+  DURATIONS,
+  TUNING_PRESETS,
+  clampTempo,
+  drumLaneOf,
+  drumTrack,
+  type DocBar,
+  type DocBeat,
+  type DocNote,
+  type DocTrack,
+  type DurationValue,
+  type SongDoc,
+  type TrackKind,
+} from './doc.ts';
 
 /** General MIDI programs of the sounds the editor offers. */
 const PROGRAMS: Record<number, string> = {
@@ -18,6 +32,7 @@ const PROGRAMS: Record<number, string> = {
   33: 'electricbassfinger',
   34: 'electricbasspick',
   35: 'fretlessbass',
+  105: 'banjo',
 };
 
 export interface ScoreToDocResult {
@@ -30,23 +45,22 @@ export function scoreToDoc(score: alphaTab.model.Score): ScoreToDocResult {
   const dropped = new Set<string>();
   const usable = score.tracks.filter((t) => {
     const staff = t.staves[0];
-    if (!staff || staff.isPercussion) {
-      dropped.add(`track "${t.name}" (drums)`);
-      return false;
-    }
+    if (!staff) return false;
+    if (staff.isPercussion) return true;
     if (!staff.tuning.length) {
       dropped.add(`track "${t.name}" (no tab staff)`);
       return false;
     }
     return true;
   });
-  if (!usable.length) throw new Error('This tab has no guitar or bass track the editor can open.');
+  if (!usable.length) throw new Error('This tab has no track the editor can open.');
 
   const tracks: DocTrack[] = usable.map((t) => {
     const staff = t.staves[0];
-    const program = t.playbackInfo.program;
-    const kind: TrackKind = (program >= 32 && program <= 39) || (staff.tuning.length <= 5 && Math.max(...staff.tuning) <= 45) ? 'bass' : 'guitar';
     if (t.staves.length > 1) dropped.add('extra staves');
+    if (staff.isPercussion) return drumTrack(t.name || 'Drums');
+    const program = t.playbackInfo.program;
+    const kind = kindOf(program, staff.tuning);
     if (staff.capo) dropped.add('capo');
     return { name: t.name, kind, sound: PROGRAMS[program] ?? DEFAULT_SOUND[kind], tuning: [...staff.tuning] };
   });
@@ -55,7 +69,7 @@ export function scoreToDoc(score: alphaTab.model.Score): ScoreToDocResult {
   const bars: DocBar[] = score.masterBars.map((mb, i) => {
     const bar: DocBar = {
       ts: [mb.timeSignatureNumerator, mb.timeSignatureDenominator],
-      tracks: usable.map((t) => readVoice(t.staves[0].bars[i], t.staves[0].tuning.length, dropped)),
+      tracks: usable.map((t) => readVoice(t.staves[0].bars[i], t, dropped)),
     };
     if (mb.isRepeatStart) bar.repeatStart = true;
     if (mb.repeatCount > 1) bar.repeatEnd = mb.repeatCount;
@@ -74,8 +88,22 @@ export function scoreToDoc(score: alphaTab.model.Score): ScoreToDocResult {
   };
 }
 
-function readVoice(bar: alphaTab.model.Bar | undefined, stringCount: number, dropped: Set<string>): DocBeat[] {
+/**
+ * alphaTex doesn't say which instrument a stringed track is, so it is read from the sound and the
+ * tuning: a preset tuning names its instrument, else bass programs or low tunings are bass.
+ */
+function kindOf(program: number, tuning: number[]): TrackKind {
+  const preset = TUNING_PRESETS.find((p) => p.tuning.join() === tuning.join());
+  if (preset && (preset.kind !== 'guitar' || program < 32 || program > 39)) return preset.kind;
+  if (program === 105) return 'banjo';
+  if ((program >= 32 && program <= 39) || (tuning.length <= 5 && Math.max(...tuning) <= 45)) return 'bass';
+  return 'guitar';
+}
+
+function readVoice(bar: alphaTab.model.Bar | undefined, track: alphaTab.model.Track, dropped: Set<string>): DocBeat[] {
   if (!bar) return [];
+  const stringCount = track.staves[0].tuning.length;
+  const drums = track.staves[0].isPercussion;
   if (bar.voices.slice(1).some((v) => !v.isEmpty)) dropped.add('second voices');
   const out: DocBeat[] = [];
   for (const beat of bar.voices[0]?.beats ?? []) {
@@ -96,6 +124,13 @@ function readVoice(bar: alphaTab.model.Bar | undefined, stringCount: number, dro
     if (beat.dots) out1.dotted = true;
     if (tuplet === '3:2') out1.triplet = true;
     for (const n of beat.notes) {
+      if (drums) {
+        const gm = track.percussionArticulations[n.percussionArticulation]?.outputMidiNumber ?? n.percussionArticulation;
+        const lane = drumLaneOf(gm);
+        if (!lane) dropped.add('drums the editor\'s kit doesn\'t have');
+        else if (!out1.notes.some((x) => x.string === lane)) out1.notes.push({ string: lane, fret: 0 });
+        continue;
+      }
       if (!n.isStringed) continue;
       const note: DocNote = { string: stringCount - n.string + 1, fret: n.fret };
       if (n.isTieDestination) note.tie = true;

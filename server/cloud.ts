@@ -9,7 +9,7 @@
  */
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { envVar } from '../shared/brand.ts';
 import {
   CLOUD_TAB_COLUMNS,
@@ -18,6 +18,7 @@ import {
   isLoopbackHttpUrl,
   type CloudConfig,
   type CloudStatus,
+  type CloudTabFields,
   type CloudTabRow,
 } from '../shared/cloud.ts';
 import { HttpError } from './library.ts';
@@ -36,6 +37,8 @@ const ASSISTANT_TIMEOUT_MS = 180_000;
 interface StoredSession {
   refreshToken: string;
   email: string;
+  /** The Supabase user id: the folder of the user's files in the `tabs` bucket. */
+  userId?: string;
 }
 
 interface Session extends StoredSession {
@@ -48,7 +51,7 @@ interface TokenResponse {
   access_token?: string;
   refresh_token?: string;
   expires_in?: number;
-  user?: { email?: string };
+  user?: { email?: string; id?: string };
   error_description?: string;
   msg?: string;
 }
@@ -82,7 +85,7 @@ export class FretlaneCloud {
   async init(): Promise<void> {
     try {
       const data = JSON.parse(await fs.readFile(this.file, 'utf8')) as Partial<StoredSession>;
-      if (data.refreshToken) this.stored = { refreshToken: data.refreshToken, email: data.email ?? '' };
+      if (data.refreshToken) this.stored = { refreshToken: data.refreshToken, email: data.email ?? '', ...(data.userId ? { userId: data.userId } : {}) };
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
     }
@@ -148,6 +151,66 @@ export class FretlaneCloud {
     const bytes = new Uint8Array(await res.arrayBuffer());
     if (bytes.byteLength > MAX_TAB_BYTES) throw new HttpError(413, 'Tab file is larger than 20 MB.');
     return bytes;
+  }
+
+  /**
+   * Stores a tab in the user's Fretlane Cloud library: a new row, or a new version of the row
+   * `cloudId` (made again if it was deleted on the website). Returns the row id. The `tabs` bucket
+   * lets users add and delete their files but not overwrite them, so each version is a new file;
+   * the row then points at it and the previous file is deleted.
+   */
+  async saveTab(cloudId: string | null, fields: CloudTabFields, bytes: Uint8Array): Promise<string> {
+    if (bytes.byteLength > MAX_TAB_BYTES) throw new HttpError(413, 'Tab file is larger than 20 MB.');
+    const userId = await this.userId();
+    const file = `${userId}/${randomUUID()}.${fields.format}`;
+    const objectUrl = (p: string) => `/storage/v1/object/tabs/${p.split('/').map(encodeURIComponent).join('/')}`;
+    await this.writeOk(await this.authed(objectUrl(file), { method: 'POST', body: bytes, contentType: 'text/plain; charset=utf-8', passErrors: true }));
+    const row = { ...fields, file_path: file, updated_at: new Date().toISOString() };
+    let previous: string | null = null;
+    let id: string;
+    try {
+      const existing = cloudId ? await this.authed(`/rest/v1/tabs?select=id,file_path&id=eq.${encodeURIComponent(cloudId)}`) : null;
+      const found = existing ? ((await existing.json()) as { id: string; file_path: string }[])[0] : undefined;
+      const res = found
+        ? await this.authed(`/rest/v1/tabs?id=eq.${encodeURIComponent(found.id)}&select=id`, { method: 'PATCH', body: JSON.stringify(row), headers: { prefer: 'return=representation' }, passErrors: true })
+        : await this.authed('/rest/v1/tabs?select=id', { method: 'POST', body: JSON.stringify(row), headers: { prefer: 'return=representation' }, passErrors: true });
+      await this.writeOk(res);
+      const saved = ((await res.json()) as { id: string }[])[0];
+      if (!saved) throw new HttpError(502, 'Fretlane Cloud did not store the tab.');
+      id = saved.id;
+      previous = found && found.file_path !== file ? found.file_path : null;
+    } catch (err) {
+      await this.authed(objectUrl(file), { method: 'DELETE', passErrors: true }).catch(() => undefined);
+      throw err;
+    }
+    // Best effort: a leftover old version only costs storage, the row already points at the new one.
+    if (previous) await this.authed(objectUrl(previous), { method: 'DELETE', passErrors: true }).catch(() => undefined);
+    return id;
+  }
+
+  /** Turns a refused write into a clear error. Row-level security refuses writes without a plan. */
+  private async writeOk(res: Response): Promise<void> {
+    if (res.ok) return;
+    const body = (await res.text().catch(() => '')).toLowerCase();
+    if (res.status === 403 || /row-level security|unauthorized/.test(body)) {
+      this.premiumCache = null;
+      throw new HttpError(402, 'Fretlane Cloud did not accept the tab: this account has no active Fretlane Cloud plan.');
+    }
+    if (res.status === 413 || /too large|payload/.test(body)) throw new HttpError(413, 'Fretlane Cloud refused the tab: the file is too large.');
+    throw new HttpError(502, `Fretlane Cloud answered ${res.status}.`);
+  }
+
+  /** The signed-in user's id, from the session or else asked from the auth server once. */
+  private async userId(): Promise<string> {
+    if (this.stored?.userId) return this.stored.userId;
+    const res = await this.authed('/auth/v1/user');
+    const user = (await res.json()) as { id?: string };
+    if (!user.id) throw new HttpError(502, 'Fretlane Cloud did not say who is signed in.');
+    if (this.stored) {
+      this.stored = { ...this.stored, userId: user.id };
+      await this.writeStored();
+    }
+    return user.id;
   }
 
   /**
@@ -220,7 +283,7 @@ export class FretlaneCloud {
    */
   private async authed(
     target: string,
-    init: { method?: string; body?: string; timeoutMs?: number; passErrors?: boolean } = {},
+    init: { method?: string; body?: string | Uint8Array; contentType?: string; headers?: Record<string, string>; timeoutMs?: number; passErrors?: boolean } = {},
   ): Promise<Response> {
     const url = /^https?:/.test(target) ? target : this.config.apiUrl + target;
     const send = (token: string) =>
@@ -228,8 +291,12 @@ export class FretlaneCloud {
         url,
         {
           method: init.method ?? 'GET',
-          headers: { ...this.headers(token), ...(init.body !== undefined ? { 'content-type': 'application/json' } : {}) },
-          ...(init.body !== undefined ? { body: init.body } : {}),
+          headers: {
+            ...this.headers(token),
+            ...(init.body !== undefined ? { 'content-type': init.contentType ?? 'application/json' } : {}),
+            ...init.headers,
+          },
+          ...(init.body !== undefined ? { body: init.body as BodyInit } : {}),
         },
         init.timeoutMs,
       );
@@ -289,12 +356,18 @@ export class FretlaneCloud {
       email: body.user?.email ?? this.stored?.email ?? '',
       expires: Date.now() + ((body.expires_in ?? 3600) - 60) * 1000,
     };
+    const userId = body.user?.id ?? this.stored?.userId;
+    if (userId) session.userId = userId;
     this.session = session;
-    this.stored = { refreshToken: session.refreshToken, email: session.email };
+    this.stored = { refreshToken: session.refreshToken, email: session.email, ...(userId ? { userId } : {}) };
+    await this.writeStored();
+    return session;
+  }
+
+  private async writeStored(): Promise<void> {
     const tmp = `${this.file}.tmp`;
     await fs.writeFile(tmp, JSON.stringify(this.stored, null, 2), { mode: 0o600 });
     await fs.rename(tmp, this.file);
-    return session;
   }
 
   private async forget(): Promise<void> {

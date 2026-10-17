@@ -12,7 +12,7 @@
  * the schema and the request limits for Premium users who don't bring their own API key. Keep the
  * two in step.
  */
-import { barTicks, beatTicks, pitchName, restsFor, voiceTicks, type DocBar, type DocBeat, type DocNote, type DurationValue, type SongDoc } from './doc.ts';
+import { barTicks, beatTicks, instrumentLabel, pitchName, restsFor, voiceTicks, type DocBar, type DocBeat, type DocNote, type DurationValue, type SongDoc } from './doc.ts';
 import { clampCursor, normalizeRange, type BarRange, type Cursor, type Edit } from './commands.ts';
 
 export type RiffMode = 'improve' | 'generate';
@@ -192,7 +192,7 @@ export function buildRiffRequest(
   const ts = doc.bars[first].ts;
   const lines = [
     `Song: "${doc.title}"`,
-    `Instrument: ${t.kind === 'bass' ? 'bass' : 'guitar'}, ${strings} strings, sound "${t.sound}"`,
+    `Instrument: ${instrumentLabel(t.kind).toLowerCase()}, ${strings} strings, sound "${t.sound}"`,
     `Tuning (highest string first): ${tuningText(t.tuning)}`,
     `Tempo: ${tempo} BPM. Time signature: ${ts[0]}/${ts[1]}.`,
   ];

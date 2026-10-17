@@ -12,7 +12,96 @@ import { QUARTER } from '../music.ts';
 export const DURATIONS = [1, 2, 4, 8, 16, 32] as const;
 export type DurationValue = (typeof DURATIONS)[number];
 
-export type TrackKind = 'guitar' | 'bass';
+export type TrackKind = 'guitar' | 'bass' | 'ukulele' | 'mandolin' | 'banjo' | 'drums';
+
+/** The instruments a track can be, in the order the editor offers them. */
+export const INSTRUMENTS: { kind: TrackKind; label: string }[] = [
+  { kind: 'guitar', label: 'Guitar' },
+  { kind: 'bass', label: 'Bass' },
+  { kind: 'drums', label: 'Drums' },
+  { kind: 'ukulele', label: 'Ukulele' },
+  { kind: 'mandolin', label: 'Mandolin' },
+  { kind: 'banjo', label: 'Banjo' },
+];
+
+export function instrumentLabel(kind: TrackKind): string {
+  return INSTRUMENTS.find((i) => i.kind === kind)?.label ?? 'Guitar';
+}
+
+export interface DrumLane {
+  /** General MIDI percussion note. */
+  gm: number;
+  name: string;
+  /**
+   * Where alphaTab draws it on the five-line drum staff, in half spaces down from the top line
+   * (-2 = the ledger line above, 7 = the bottom space). Read from alphaTab's articulations.
+   */
+  staffLine: number;
+  /** Other GM notes that mean the same drum when reading a tab written elsewhere. */
+  aliases?: number[];
+}
+
+/**
+ * The drum kit a drum track writes to, top lane first. A drum track's "strings" are these lanes:
+ * the cursor moves between them like strings, a hit is a note on a lane (its fret is unused), and
+ * `DocTrack.tuning` holds the lanes' GM numbers.
+ */
+export const DRUM_LANES: DrumLane[] = [
+  { gm: 49, name: 'Crash', staffLine: -2, aliases: [57, 55, 52] },
+  { gm: 46, name: 'Open hi-hat', staffLine: -1 },
+  { gm: 42, name: 'Hi-hat', staffLine: -1 },
+  { gm: 51, name: 'Ride', staffLine: 0, aliases: [53, 59] },
+  { gm: 48, name: 'High tom', staffLine: 2, aliases: [50] },
+  { gm: 38, name: 'Snare', staffLine: 3, aliases: [40, 37] },
+  { gm: 47, name: 'Mid tom', staffLine: 4, aliases: [45] },
+  { gm: 43, name: 'Floor tom', staffLine: 6, aliases: [41] },
+  { gm: 36, name: 'Kick', staffLine: 7, aliases: [35] },
+  { gm: 44, name: 'Hi-hat pedal', staffLine: 9 },
+];
+
+export const DRUM_KIT = DRUM_LANES.map((l) => l.gm);
+
+/** The lane a GM percussion note belongs to (1 = top lane), or 0 when the kit has no such drum. */
+export function drumLaneOf(gm: number): number {
+  const i = DRUM_LANES.findIndex((l) => l.gm === gm || l.aliases?.includes(gm));
+  return i + 1;
+}
+
+export function drumLaneName(gm: number): string {
+  return DRUM_LANES.find((l) => l.gm === gm)?.name ?? `Drum ${gm}`;
+}
+
+/**
+ * The lane (1 = top) whose drum sits nearest a staff position, in half spaces down from the top
+ * line. Hi-hat and open hi-hat share a position; a click there means the closed hi-hat.
+ */
+export function drumLaneAt(staffLine: number, lanes: number[] = DRUM_KIT): number {
+  let best = 1;
+  let bestDist = Infinity;
+  lanes.forEach((gm, i) => {
+    const line = DRUM_LANES.find((l) => l.gm === gm)?.staffLine ?? 0;
+    const dist = Math.abs(line - staffLine);
+    if (dist <= bestDist) {
+      best = i + 1;
+      bestDist = dist;
+    }
+  });
+  return best;
+}
+
+export function drumStaffLine(gm: number): number {
+  return DRUM_LANES.find((l) => l.gm === gm)?.staffLine ?? 0;
+}
+
+/** Where the cursor starts on a track: the lowest string, or the kick on drums. */
+export function startString(track: DocTrack): number {
+  if (!isDrums(track)) return track.tuning.length;
+  return track.tuning.indexOf(36) + 1 || track.tuning.length;
+}
+
+export function isDrums(track: Pick<DocTrack, 'kind'> | undefined): boolean {
+  return track?.kind === 'drums';
+}
 
 export interface DocNote {
   /** alphaTex string number: 1 = the highest string (top line of the tab). */
@@ -58,9 +147,9 @@ export interface DocBar {
 export interface DocTrack {
   name: string;
   kind: TrackKind;
-  /** General MIDI instrument name as alphaTex spells it, e.g. "electricguitarclean". */
+  /** General MIDI instrument name as alphaTex spells it, e.g. "electricguitarclean"; "percussion" for drums. */
   sound: string;
-  /** MIDI pitch per string, highest string first (alphaTex order). */
+  /** MIDI pitch per string, highest string first (alphaTex order). For drums: the lanes' GM notes (DRUM_KIT). */
   tuning: number[];
 }
 
@@ -171,11 +260,24 @@ export const TUNING_PRESETS: TuningPreset[] = [
   { id: 'bass-standard', label: 'Standard (E A D G)', kind: 'bass', tuning: [43, 38, 33, 28] },
   { id: 'bass-drop-d', label: 'Drop D (D A D G)', kind: 'bass', tuning: [43, 38, 33, 26] },
   { id: 'bass-5-standard', label: '5-string (B E A D G)', kind: 'bass', tuning: [43, 38, 33, 28, 23] },
+  // Ukulele and 5-string banjo are re-entrant: the string at the bottom of the tab is not the lowest.
+  { id: 'ukulele-standard', label: 'Standard (G C E A)', kind: 'ukulele', tuning: [69, 64, 60, 67] },
+  { id: 'ukulele-low-g', label: 'Low G (G C E A)', kind: 'ukulele', tuning: [69, 64, 60, 55] },
+  { id: 'ukulele-baritone', label: 'Baritone (D G B E)', kind: 'ukulele', tuning: [64, 59, 55, 50] },
+  { id: 'mandolin-standard', label: 'Standard (G D A E)', kind: 'mandolin', tuning: [76, 69, 62, 55] },
+  { id: 'banjo-open-g', label: 'Open G (g D G B D)', kind: 'banjo', tuning: [62, 59, 55, 50, 67] },
+  { id: 'banjo-double-c', label: 'Double C (g C G C D)', kind: 'banjo', tuning: [62, 60, 55, 48, 67] },
+  { id: 'banjo-tenor', label: 'Tenor (C G D A)', kind: 'banjo', tuning: [69, 62, 55, 48] },
 ];
 
 export const DEFAULT_SOUND: Record<TrackKind, string> = {
   guitar: 'electricguitarclean',
   bass: 'electricbassfinger',
+  // General MIDI has no ukulele or mandolin; these are the closest sounds it has.
+  ukulele: 'acousticguitarnylon',
+  mandolin: 'acousticguitarsteel',
+  banjo: 'banjo',
+  drums: 'percussion',
 };
 
 /** Sounds offered per track kind (General MIDI names, as alphaTex spells them). */
@@ -194,7 +296,22 @@ export const SOUNDS: Record<TrackKind, { id: string; label: string }[]> = {
     { id: 'fretlessbass', label: 'Fretless' },
     { id: 'acousticbass', label: 'Acoustic bass' },
   ],
+  ukulele: [
+    { id: 'acousticguitarnylon', label: 'Nylon strings' },
+    { id: 'acousticguitarsteel', label: 'Steel strings' },
+  ],
+  mandolin: [
+    { id: 'acousticguitarsteel', label: 'Steel strings' },
+    { id: 'acousticguitarnylon', label: 'Nylon strings' },
+  ],
+  banjo: [{ id: 'banjo', label: 'Banjo' }],
+  drums: [{ id: 'percussion', label: 'Drum kit' }],
 };
+
+/** A new drum track with the full kit. */
+export function drumTrack(name = 'Drums'): DocTrack {
+  return { name, kind: 'drums', sound: 'percussion', tuning: [...DRUM_KIT] };
+}
 
 const NOTE_NAMES = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'];
 
@@ -213,7 +330,9 @@ export function parseTuning(text: string, kind: TrackKind): number[] | null {
   if (parts.length < 4 || parts.length > 8) return null;
   const pcs: Record<string, number> = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 };
   const out: number[] = [];
-  let floor = kind === 'bass' ? 21 : 33; // A0 / A1: nothing lower is a sensible lowest string
+  if (kind === 'drums') return null;
+  // A0 / A1 / G3 / C3: nothing lower is a sensible lowest string.
+  let floor = kind === 'bass' ? 21 : kind === 'mandolin' ? 55 : kind === 'ukulele' || kind === 'banjo' ? 48 : 33;
   for (const part of parts) {
     const m = /^([A-Ga-g])(#|b)?(-?\d)?$/.exec(part);
     if (!m) return null;

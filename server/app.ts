@@ -6,6 +6,7 @@ import { fetchTab } from './fetchTab.ts';
 import { MediaSearch } from './mediaSearch.ts';
 import { FretlaneCloud } from './cloud.ts';
 import { RiffAssistant } from './assistant.ts';
+import { CloudSync } from './cloudSync.ts';
 import type { RiffRequest } from '../shared/editor/assistant.ts';
 import { cloudTabToSongInput, summarizeCloudTab, type CloudConfig } from '../shared/cloud.ts';
 import type { PremiumStatus } from '../shared/premium.ts';
@@ -62,6 +63,8 @@ export interface ServerOptions {
   seed?: string | SeedSource;
   /** Fretlane Cloud endpoints; defaults to the real service (or FRETLANE_CLOUD_* overrides). */
   cloud?: CloudConfig;
+  /** Quiet time (ms) after a change to a written song before it is backed up to Fretlane Cloud. */
+  cloudSyncDelayMs?: number;
   /**
    * The tab editor is unlocked without checking for a plan. Set by the Mac App Store build only:
    * it is paid up front, and Apple doesn't allow unlocking features with an outside purchase.
@@ -84,6 +87,10 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
   const cloud = new FretlaneCloud(opts.libraryDir, opts.cloud);
   await cloud.init();
   const assistant = new RiffAssistant(cloud);
+  // Songs written in Fretlane are backed up to Fretlane Cloud while signed in; catch up on changes
+  // made while signed out or offline.
+  const cloudSync = new CloudSync(library, cloud, opts.cloudSyncDelayMs);
+  cloudSync.syncAll();
 
   /** Fretlane Premium (the tab editor); `force` asks the website again instead of the cached answer. */
   async function premium(force = false): Promise<PremiumStatus> {
@@ -125,12 +132,16 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
         if (method === 'POST') {
           const input = await readJson<NewSongInput>(req);
           if (input.written) await requirePremium();
-          return send(res, 201, await library.add(input));
+          const song = await library.add(input);
+          cloudSync.schedule(song.id);
+          return send(res, 201, song);
         }
       } else if (parts[3] === 'tab' && method === 'PUT') {
         // The tab editor's save: raw alphaTex, not JSON.
         await requirePremium();
-        return send(res, 200, await library.setTab(id, req));
+        const song = await library.setTab(id, req);
+        cloudSync.schedule(song.id);
+        return send(res, 200, song);
       } else if (parts[3] === 'tab' && method === 'GET') {
         const song = library.get(id);
         if (!song) throw new HttpError(404, 'Song not found');
@@ -155,9 +166,14 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
           if (!song) throw new HttpError(404, 'Song not found');
           return send(res, 200, song);
         }
-        if (method === 'PATCH') return send(res, 200, await library.update(id, await readJson<SongPatch>(req)));
+        if (method === 'PATCH') {
+          const song = await library.update(id, await readJson<SongPatch>(req));
+          cloudSync.schedule(song.id);
+          return send(res, 200, song);
+        }
         if (method === 'DELETE') {
           await library.remove(id);
+          cloudSync.cancel(id);
           return send(res, 200, { ok: true });
         }
       }
@@ -218,12 +234,18 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
       try {
         if (error) throw new HttpError(400, error);
         const status = await cloud.finishLogin(url.searchParams.get('state') ?? '', url.searchParams.get('token_hash') ?? '');
+        cloudSync.syncAll();
         return sendPage(res, 200, 'Signed in', `${APP_NAME} is connected to Fretlane Cloud${status.email ? ` as ${status.email}` : ''}. You can close this tab and go back to ${APP_NAME}.`);
       } catch (err) {
         return sendPage(res, err instanceof HttpError ? err.status : 500, 'Sign-in failed', (err as Error).message);
       }
     }
-    if (what === 'logout' && method === 'POST') return send(res, 200, await cloud.logout());
+    if (what === 'logout' && method === 'POST') {
+      cloudSync.cancel();
+      return send(res, 200, await cloud.logout());
+    }
+    // How the Fretlane Cloud backup of a written song stands (the editor shows it).
+    if (what === 'sync' && id && method === 'GET') return send(res, 200, cloudSync.status(decodeURIComponent(id)));
     if (what === 'tabs' && !id && method === 'GET') {
       const rows = await cloud.listTabs();
       return send(res, 200, rows.map((r) => summarizeCloudTab(r, library.findByCloudId(r.id)?.id ?? null)));
@@ -332,6 +354,10 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
   return {
     url: `http://${host}:${port}`,
     port,
-    close: () => new Promise((resolve) => server.close(() => resolve())),
+    close: () =>
+      new Promise((resolve) => {
+        cloudSync.close();
+        server.close(() => resolve());
+      }),
   };
 }

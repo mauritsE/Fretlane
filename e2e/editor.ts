@@ -8,7 +8,9 @@
  * note, undo/redo, bars and copy/paste, autosave and reopening, playback from the cursor, adding a
  * track, the .gp export, "Edit a copy" of a demo song, and the API refusing writes once the plan
  * ends, and the songwriting assistant (write a riff, improve the selection, undo) against a canned
- * answer from the fake website. It also measures re-render times on a 200-bar song (M0 in docs/premium/tab-editor-spec.md)
+ * answer from the fake website; a drum track (hits typed with Enter, the caret on the drum staff),
+ * and the Fretlane Cloud backup of written songs (uploaded to the fake storage and tabs table, then
+ * replaced on the next edit). It also measures re-render times on a 200-bar song (M0 in docs/premium/tab-editor-spec.md)
  * and prints them. It does not prove the real website returns these rows; check that by hand.
  */
 import { chromium, type Page } from 'playwright';
@@ -39,6 +41,9 @@ let subscription: { status: string; current_period_end: string | null } | null =
 /** Requests the fake website's songwriting assistant received. */
 const riffRequests: { mode: string; prompt: string; bars: number; context: string }[] = [];
 const eighthsBar = (fret: number, count = 8) => ({ beats: Array.from({ length: count }, () => ({ duration: 8, dotted: false, triplet: false, notes: [{ string: 6, fret, techniques: [] }] })) });
+/** What the fake Fretlane Cloud stores: the `tabs` table and the `tabs` bucket. */
+const cloudRows: { id: string; title: string; artist: string | null; file_path: string; format: string }[] = [];
+const cloudFiles = new Map<string, string>();
 const access = new Set<string>();
 const refresh = new Set<string>();
 let n = 0;
@@ -46,7 +51,7 @@ const issued = () => {
   n++;
   access.add(`a${n}`);
   refresh.add(`r${n}`);
-  return { access_token: `a${n}`, refresh_token: `r${n}`, expires_in: 3600, user: { email: 'writer@example.com' } };
+  return { access_token: `a${n}`, refresh_token: `r${n}`, expires_in: 3600, user: { email: 'writer@example.com', id: 'user-w' } };
 };
 const fake = http.createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', 'http://x');
@@ -70,13 +75,41 @@ const fake = http.createServer(async (req, res) => {
     return;
   }
   if (req.headers.apikey !== 'pk') return json(401, { msg: 'no apikey' });
-  const b = body ? (JSON.parse(body) as Record<string, string>) : {};
+  let b: Record<string, string> = {};
+  try {
+    b = body ? (JSON.parse(body) as Record<string, string>) : {};
+  } catch {
+    // A tab file upload, not JSON.
+  }
   if (url.pathname === '/auth/v1/verify') return b.token_hash === 'hash-ok' ? json(200, issued()) : json(403, { msg: 'invalid' });
   if (url.pathname === '/auth/v1/token') return refresh.delete(b.refresh_token) ? json(200, issued()) : json(400, { error_description: 'Invalid Refresh Token' });
   if (!access.has(String(req.headers.authorization).replace('Bearer ', ''))) return json(401, { message: 'JWT expired' });
   if (url.pathname === '/rest/v1/subscriptions') return json(200, subscription ? [subscription] : []);
   if (url.pathname === '/rest/v1/rpc/my_kofi_membership' && req.method === 'POST') return json(200, null);
-  if (url.pathname === '/rest/v1/tabs') return json(200, []);
+  const active = subscription?.status === 'active';
+  const file = url.pathname.match(/^\/storage\/v1\/object\/tabs\/(.+)$/);
+  if (file && req.method === 'POST') {
+    const key = decodeURIComponent(file[1]);
+    if (!active || !key.startsWith('user-w/')) return json(400, { statusCode: '403', error: 'Unauthorized', message: 'new row violates row-level security policy' });
+    cloudFiles.set(key, body);
+    return json(200, { Key: `tabs/${key}` });
+  }
+  if (file && req.method === 'DELETE') {
+    cloudFiles.delete(decodeURIComponent(file[1]));
+    return json(200, [{}]);
+  }
+  if (url.pathname === '/rest/v1/tabs') {
+    const id = url.searchParams.get('id')?.replace(/^eq\./, '');
+    if (req.method === 'POST') {
+      if (!active) return json(403, { code: '42501', message: 'new row violates row-level security policy' });
+      const created = { id: `cloud-${cloudRows.length + 1}`, title: b.title, artist: b.artist ?? null, file_path: b.file_path, format: b.format };
+      cloudRows.push(created);
+      return json(201, [{ id: created.id }]);
+    }
+    const hits = cloudRows.filter((r) => !id || r.id === id);
+    if (req.method === 'PATCH') for (const r of hits) Object.assign(r, b);
+    return json(200, hits.map((r) => ({ ...r, spotify_url: null, youtube_url: null, sync_offset: null, updated_at: '' })));
+  }
   if (url.pathname === '/api/public/app/riff-assistant' && req.method === 'POST') {
     // Stands in for the website calling Claude: a canned riff, so the test is about the app.
     const r = JSON.parse(body) as (typeof riffRequests)[number];
@@ -93,7 +126,7 @@ const cloud: CloudConfig = { siteUrl: fakeUrl, apiUrl: fakeUrl, apiKey: 'pk' };
 
 // ---------- Fretlane ----------
 const libraryDir = await fs.mkdtemp(path.join(os.tmpdir(), 'fretlane-editor-e2e-'));
-const server = await startServer({ port: 0, host: '127.0.0.1', libraryDir, assets: dirAssets(path.join(ROOT, 'dist')), cloud, seed: path.join(ROOT, 'demo') });
+const server = await startServer({ port: 0, host: '127.0.0.1', libraryDir, assets: dirAssets(path.join(ROOT, 'dist')), cloud, seed: path.join(ROOT, 'demo'), cloudSyncDelayMs: 300 });
 
 const executablePath = process.env.CHROMIUM_PATH ?? (existsSync('/opt/pw-browsers/chromium') ? '/opt/pw-browsers/chromium' : undefined);
 const browser = await chromium.launch({ executablePath, args: ['--autoplay-policy=no-user-gesture-required'] });
@@ -329,12 +362,75 @@ await rendered();
 check((await ed()).doc.bars[0].tracks[1][0].notes[0]?.string === 4, 'typing works on the bass track (starts on its lowest string)');
 await page.screenshot({ path: path.join(SHOTS, 'editor-3-bass.png') });
 
+// ---------- drums ----------
+await page.click('.sidebar .add-track');
+await page.waitForSelector('dialog form');
+await page.selectOption('dialog form select >> nth=0', 'drums');
+check(await page.locator('dialog form label:has-text("Tuning")').isHidden(), 'a drum track has no tuning to pick');
+await page.click('dialog button[type="submit"]');
+await rendered();
+s = await ed();
+const kit = s.doc.tracks[2].tuning;
+check(s.doc.tracks.length === 3 && s.doc.tracks[2].kind === 'drums' && s.cursor.track === 2 && kit[s.cursor.string - 1] === 36, '+ Track adds a drum track, cursor on the kick');
+await page.keyboard.press('Enter');
+await page.keyboard.press('ArrowRight');
+for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowUp');
+check(/Snare/.test((await page.locator('.edit-pos').textContent()) ?? ''), `↑ moves between drums; the status bar names it (${await page.locator('.edit-pos').textContent()})`);
+await page.keyboard.press('5');
+await page.keyboard.press('ArrowUp');
+await page.keyboard.press('ArrowUp');
+await page.keyboard.press('ArrowUp');
+await page.keyboard.press('Enter');
+await rendered();
+s = await ed();
+const hits = s.doc.bars[0].tracks[2].map((b) => b.notes.map((x) => kit[x.string - 1]));
+check(JSON.stringify(hits.slice(0, 2)) === JSON.stringify([[36], [42, 38]]), `Enter and number keys add hits; ↑ stacks a hi-hat on the snare (${JSON.stringify(hits.slice(0, 3))})`);
+const drumCaret = await page.evaluate(() => {
+  const w = window as unknown as { fretlane: { at: alphaTab.AlphaTabApi } };
+  const beat = w.fretlane.at.boundsLookup!.staffSystems[0].bars[0].bars[0].beats.find((x) => x.beat.index === 1)!;
+  // The hi-hat (the caret's drum) is the higher of the two note heads.
+  const head = beat.notes!.map((nb) => nb.noteHeadBounds).sort((a, b) => a.y - b.y)[0];
+  const c = document.querySelector('.editor-overlay .caret')!.getBoundingClientRect();
+  const stack = document.querySelector('.at-stack')!.getBoundingClientRect();
+  return { headX: head.x + head.w / 2, headY: head.y + head.h / 2, caretX: c.left - stack.left + c.width / 2, caretY: c.top - stack.top + c.height / 2, notes: beat.notes!.length };
+});
+check(drumCaret.notes === 2 && Math.abs(drumCaret.headX - drumCaret.caretX) < 8 && Math.abs(drumCaret.headY - drumCaret.caretY) < 4, `the caret sits on the hi-hat on the drum staff (caret ${drumCaret.caretX.toFixed(1)},${drumCaret.caretY.toFixed(1)} vs note ${drumCaret.headX.toFixed(1)},${drumCaret.headY.toFixed(1)})`);
+check(await page.locator('.ai-go').isDisabled(), 'the riff assistant is off on a drum track');
+await page.screenshot({ path: path.join(SHOTS, 'editor-3b-drums.png') });
+
+// ---------- Fretlane Cloud backup ----------
+/** Waits for the editor's autosave, then for the server to have uploaded that version. */
+async function cloudSynced(): Promise<void> {
+  await page.waitForFunction(() => (window as unknown as { fretlane: { editor: EditorHandle } }).fretlane.editor.saved, undefined, { timeout: 10000 });
+  const id = (await ed()).song.id;
+  for (let i = 0; i < 100; i++) {
+    const st = (await (await fetch(`${server.url}/api/cloud/sync/${encodeURIComponent(id)}`)).json()) as { state: string };
+    if (st.state === 'synced') break;
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  await page.waitForFunction(() => document.querySelector('.cloud-state')?.textContent === '☁ Synced', undefined, { timeout: 10000 });
+}
+await cloudSynced();
+const localTab = await (await fetch(`${server.url}/api/songs/${encodeURIComponent(s.song.id)}/tab`)).text();
+const backup = cloudRows.find((r) => r.title === 'E2E Riff');
+check(!!backup && backup.format === 'atex' && cloudFiles.get(backup.file_path) === localTab && localTab.includes('\\instrument percussion'), 'the written song is backed up to Fretlane Cloud (row + file), drums included');
+check(cloudRows.filter((r) => r.title === 'E2E Riff').length === 1 && cloudFiles.size === 1, 'a burst of edits is one cloud copy, with one file');
+const firstFile = backup?.file_path;
+await page.keyboard.press('ArrowRight');
+await page.keyboard.press('Enter');
+await rendered();
+await cloudSynced();
+const localTab2 = await (await fetch(`${server.url}/api/songs/${encodeURIComponent(s.song.id)}/tab`)).text();
+check(!!backup && backup.file_path !== firstFile && cloudFiles.get(backup.file_path) === localTab2 && !cloudFiles.has(firstFile!), 'the next edit replaces the cloud copy (same row, new file, old file deleted)');
+check((await (await fetch(`${server.url}/api/songs/${encodeURIComponent(s.song.id)}`)).json()).cloudId === backup?.id, 'the song remembers its cloud copy');
+await page.screenshot({ path: path.join(SHOTS, 'editor-3c-cloud.png') });
+
 // ---------- export ----------
 const [download] = await Promise.all([page.waitForEvent('download'), page.click('button:has-text(".gp")')]);
 const gpFile = path.join(libraryDir, 'export.gp');
 await download.saveAs(gpFile);
 const gpScore = alphaTab.importer.ScoreLoader.loadScoreFromBytes(new Uint8Array(await fs.readFile(gpFile)), new alphaTab.Settings());
-check(download.suggestedFilename() === 'E2E Riff.gp' && gpScore.tracks.length === 2 && gpScore.title === 'E2E Riff', '⤓ .gp downloads a Guitar Pro file alphaTab can open again');
+check(download.suggestedFilename() === 'E2E Riff.gp' && gpScore.tracks.length === 3 && gpScore.title === 'E2E Riff', '⤓ .gp downloads a Guitar Pro file alphaTab can open again');
 
 // ---------- render timing on a long song (M0) ----------
 await page.click('.sidebar .track-list li >> nth=0');

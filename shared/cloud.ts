@@ -8,7 +8,7 @@
  * callback with a one-time `token_hash`. The app trades that for its own session, so it never shares
  * (and never rotates away) the website's session.
  */
-import type { NewSongInput, SyncPoint } from './types.ts';
+import type { NewSongInput, Song, SyncPoint } from './types.ts';
 import { parseMediaLink } from './util.ts';
 
 export interface CloudConfig {
@@ -138,4 +138,39 @@ function toBase64(bytes: Uint8Array): string {
   let bin = '';
   for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   return btoa(bin);
+}
+
+/** The columns the app writes when it backs a song up to Fretlane Cloud. */
+export interface CloudTabFields {
+  title: string;
+  artist: string | null;
+  format: string;
+  youtube_url: string | null;
+  spotify_url: string | null;
+}
+
+/**
+ * The cloud row for a song written in Fretlane (alphaTex). The title is cut to the website's
+ * 200 characters, and the song's recording becomes the website's YouTube or Spotify link.
+ */
+export function cloudTabFields(song: Pick<Song, 'title' | 'artist' | 'youtubeId' | 'spotifyId'>): CloudTabFields {
+  return {
+    title: song.title.trim().slice(0, 200) || 'Untitled',
+    artist: song.artist.trim().slice(0, 200) || null,
+    format: 'atex',
+    youtube_url: song.youtubeId ? `https://www.youtube.com/watch?v=${song.youtubeId}` : null,
+    spotify_url: song.spotifyId ? `https://open.spotify.com/track/${song.spotifyId}` : null,
+  };
+}
+
+/** How a written song's Fretlane Cloud backup stands, for the editor. */
+export interface CloudSyncStatus {
+  /** off: not signed in. pending: changed, waiting to upload. */
+  state: 'off' | 'pending' | 'syncing' | 'synced' | 'error';
+  message?: string;
+}
+
+/** A written song with changes Fretlane Cloud doesn't have yet. */
+export function needsCloudSync(song: Pick<Song, 'written' | 'updatedAt' | 'cloudSyncedAt'>): boolean {
+  return !!song.written && song.cloudSyncedAt !== song.updatedAt;
 }

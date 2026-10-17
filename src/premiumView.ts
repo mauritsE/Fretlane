@@ -37,7 +37,7 @@ export function openPremiumDialog(first: PremiumStatus): Promise<boolean> {
         h(
           'ul.premium-points',
           {},
-          h('li', {}, 'Guitar and bass tracks, any tuning'),
+          h('li', {}, 'Guitar, bass, drums, ukulele, mandolin and banjo tracks, any tuning'),
           h('li', {}, 'Saves as you type; export to Guitar Pro (.gp) any time'),
           h('li', {}, 'Songs you wrote keep playing in Fretlane, with or without Premium'),
         ),

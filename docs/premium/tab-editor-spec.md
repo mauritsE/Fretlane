@@ -102,10 +102,10 @@ validation and the save path. M0 measured the re-render cost; see
 
 - Techniques: hammer-on/pull-off, slide, bend, vibrato, palm mute, let ring, dead note.
 - Sections and markers (Intro, Verse, Chorus), so a song gets a shape.
-- Cloud sync and version history for written songs.
+- Cloud sync (*built*: a backup of each written song, see the notes) and version history for written songs.
 - Edit imported tabs (see the open questions on round-trip fidelity).
 - A second voice per staff.
-- Drum track entry.
+- Drum track entry (*built*, with ukulele, mandolin and banjo tracks).
 - Lyrics under the tab.
 - **Riff assistant** (*built*, after v1): select bars and ask Claude to improve them, or describe a
   riff and have Claude write it at the cursor. See `shared/editor/assistant.ts`.
@@ -257,8 +257,29 @@ No targets are set yet; set them after the first beta cohort, not before.
 the document model existed: techniques (hammer/pull, slide, vibrato, full bend, palm mute, let
 ring, dead note, tie) and section names. Also time signature and tempo changes per bar, 4–8
 string tunings (presets plus custom), several guitar/bass tracks, and "✎ Make my version" for
-tabs not written in Fretlane. Not built: cloud sync of written songs, second voices, drums,
-lyrics, recording a riff into notes.
+tabs not written in Fretlane. Not built: second voices, lyrics, recording a riff into notes.
+
+**Added after v1: more instruments.** A track is a guitar, bass, drum kit, ukulele, mandolin or
+banjo (`TrackKind`, `INSTRUMENTS`). The string instruments are ordinary tab tracks with their
+own tuning presets (re-entrant ukulele and 5-string banjo included) and the closest General MIDI
+sound (GM has no ukulele or mandolin). alphaTex doesn't record the instrument, so `fromScore.ts`
+reads it back from the tuning preset and the MIDI program. A drum track's "strings" are the lanes
+of `DRUM_LANES` (crash, hi-hats, ride, toms, snare, kick, hi-hat pedal; `tuning` holds their GM
+numbers), so the cursor, durations, rests, chords and bar filling work unchanged; a hit is a note
+with fret 0, techniques are refused, and it is written as a drum staff (`(36 42).8`, always in
+brackets, because `42.8` would read as fret 42 on string 8). The editor shows the drum staff
+instead of tab on that track and places the caret from each drum's staff position (read from
+alphaTab's articulations; checked against note heads in `e2e/editor.ts`). Typed hits sound
+through a small synthesized kit in `src/pluck.ts`. The riff assistant is off on drum tracks.
+
+**Added after v1: Fretlane Cloud backup.** `server/cloudSync.ts` uploads a written song a few
+seconds after it changes (editor autosave, title, recording), while signed in; changes made signed
+out or offline go up after sign-in or at the next start. The first upload creates a row in the
+website's `tabs` table (format `atex`) and sets the song's `cloudId`; later uploads replace it.
+The `tabs` bucket has no update policy, so each version is a new file that the row then points
+at, and the old file is deleted. `cloudSyncedAt` (the `updatedAt` that was uploaded) marks what
+still needs uploading. Row-level security refuses uploads without the plan; that shows as
+"☁ Not synced" with the reason. No website change was needed.
 
 **Files.** `shared/editor/doc.ts` (document, ticks, rest filling, bar status, tunings),
 `shared/editor/commands.ts` (every edit as a pure function, plus undo history),
