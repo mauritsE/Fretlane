@@ -27,6 +27,7 @@ import {
   applyRiff,
   buildRiffRequest,
   riffRequestProblem,
+  describeUsage,
   describeWritten,
   riffFromAnswer,
   type RiffRequest,
@@ -1110,7 +1111,7 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
     drawAssistant();
     showAiResult(h('p.ai-thinking', {}, h('span.spinner.small'), request.mode === 'improve' ? 'Reworking your riff…' : 'Writing a riff…'));
     try {
-      const { riff } = await api.riffAssistant(request, controller.signal);
+      const { riff, usage, notice } = await api.riffAssistant(request, controller.signal);
       const result = riffFromAnswer(riff, doc, target);
       const e = applyRiff(doc, from, target, result);
       if (e.doc.tracks.length !== doc.tracks.length || e.cursor.track !== cursor.track) renderedTrack = -1;
@@ -1124,7 +1125,9 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
       showAiResult(
         h('p', {}, result.explanation || (request.mode === 'improve' ? 'Here is a reworked version.' : 'Here is a new riff.')),
         ...result.fixes.map((f) => h('p.hint', {}, f)),
+        ...(notice ? [h('p.hint.warn', {}, notice)] : []),
         h('p.hint', {}, `Now in ${parts}${where}. Ctrl+Z takes it back.`),
+        ...(usage ? [h('p.hint.ai-usage', {}, describeUsage(usage))] : []),
         h(
           'div.ai-row',
           {},

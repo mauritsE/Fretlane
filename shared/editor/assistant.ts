@@ -52,6 +52,25 @@ export interface RiffRequest {
   focus: string;
 }
 
+/**
+ * What the website says about the plan's monthly assistant bars (a bar is one bar on one track),
+ * returned with each answer through Fretlane Cloud. Absent with an own API key.
+ */
+export interface AssistantUsage {
+  /** The plan's name, e.g. "Fretlane Cloud". */
+  plan: string;
+  used: number;
+  allowance: number;
+  /** ISO date when the allowance resets. */
+  resetsOn: string;
+}
+
+/** "40 of 96 assistant bars used this month (Fretlane Cloud); resets on 1 November." */
+export function describeUsage(u: AssistantUsage): string {
+  const resets = new Date(u.resetsOn).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', timeZone: 'UTC' });
+  return `${u.used} of ${u.allowance} assistant bars used this month (${u.plan}); resets on ${resets}.`;
+}
+
 export const MAX_RIFF_BARS = 8;
 export const MAX_PROMPT_CHARS = 600;
 /**

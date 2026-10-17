@@ -39,6 +39,8 @@ function check(ok: boolean, what: string): void {
 // ---------- fake website + Supabase ----------
 let subscription: { status: string; current_period_end: string | null } | null = null;
 /** Requests the fake website's songwriting assistant received. */
+/** The fake website's count of this month's assistant bars. */
+let assistantBarsUsed = 0;
 const riffRequests: { mode: string; prompt: string; bars: number; song: string; focus: string }[] = [];
 const eighthsBar = (fret: number, count = 8, string = 6) => ({ beats: Array.from({ length: count }, () => ({ duration: 8, dotted: false, triplet: false, notes: [{ string, fret, drum: 'none', techniques: [] }] })) });
 /** Kick + hi-hat, hi-hat, snare + hi-hat, hi-hat … in eighths. */
@@ -120,16 +122,20 @@ const fake = http.createServer(async (req, res) => {
     const r = JSON.parse(body) as (typeof riffRequests)[number];
     riffRequests.push(r);
     if (subscription?.status !== 'active') return json(402, { error: 'The songwriting assistant comes with the Fretlane Cloud plan.' });
+    // Like the website: the plan's monthly bars (one bar on one track), charged for what was written.
+    if (assistantBarsUsed + r.bars > 96) return json(402, { error: `You have ${96 - assistantBarsUsed} of your 96 songwriting assistant bars left this month, and this request needs at least ${r.bars}.` });
+    const reply = (riff: { explanation: string; parts: { bars: unknown[] }[] }) => {
+      assistantBarsUsed += riff.parts.reduce((n, p) => n + Math.min(p.bars.length, r.bars), 0);
+      return json(200, { riff, usage: { plan: 'Fretlane Cloud', used: assistantBarsUsed, allowance: 96, resetsOn: '2026-11-01T00:00:00.000Z' } });
+    };
     if (/drums/.test(r.prompt)) {
-      return json(200, {
-        riff: {
-          explanation: 'A riff with a bass line and a rock beat under it.',
-          parts: [guitarPart([eighthsBar(0), eighthsBar(3)]), { track: 0, instrument: 'bass', name: 'Bass', bars: [eighthsBar(0, 8, 4), eighthsBar(3, 8, 4)] }, { track: 0, instrument: 'drums', name: 'Drums', bars: [rockBar(), rockBar()] }],
-        },
+      return reply({
+        explanation: 'A riff with a bass line and a rock beat under it.',
+        parts: [guitarPart([eighthsBar(0), eighthsBar(3)]), { track: 0, instrument: 'bass', name: 'Bass', bars: [eighthsBar(0, 8, 4), eighthsBar(3, 8, 4)] }, { track: 0, instrument: 'drums', name: 'Drums', bars: [rockBar(), rockBar()] }],
       });
     }
-    if (r.mode === 'generate') return json(200, { riff: { explanation: 'A funky two-bar riff on the low string.', parts: [guitarPart([eighthsBar(3, 9), eighthsBar(5)])] } });
-    return json(200, { riff: { explanation: 'Moved it up to the seventh fret for a heavier sound.', parts: [guitarPart(Array.from({ length: r.bars }, () => eighthsBar(7)))] } });
+    if (r.mode === 'generate') return reply({ explanation: 'A funky two-bar riff on the low string.', parts: [guitarPart([eighthsBar(3, 9), eighthsBar(5)])] });
+    return reply({ explanation: 'Moved it up to the seventh fret for a heavier sound.', parts: [guitarPart(Array.from({ length: r.bars }, () => eighthsBar(7)))] });
   }
   json(404, {});
 });
@@ -331,6 +337,7 @@ check(gen?.mode === 'generate' && gen.prompt === 'a funky riff 12' && gen.bars =
 check(s.doc.bars.length === 6 && beats(s.doc, 4) === Array(8).fill('3.6:8').join(' ') && beats(s.doc, 5) === Array(8).fill('5.6:8').join(' '), `the new riff fills the empty bar 5 and adds bar 6; the overlong bar is trimmed (${beats(s.doc, 4)})`);
 const resultText = (await page.locator('.ai-result').textContent()) ?? '';
 check(resultText.includes('A funky two-bar riff') && resultText.includes('trimmed or filled with rests') && resultText.includes('bars 5–6'), 'the result shows the explanation, says what was fixed and where the riff went');
+check(resultText.includes('2 of 96 assistant bars used this month (Fretlane Cloud); resets on 1 November.'), 'the result shows the plan\'s assistant bars used this month');
 check(/Bars 5–6 selected/.test((await page.locator('.edit-pos').textContent()) ?? '') && /Improve bars 5–6/.test((await page.locator('.ai-mode').textContent()) ?? ''), 'the new bars are selected, so the assistant now offers to improve them');
 await page.screenshot({ path: path.join(SHOTS, 'editor-5-assistant.png') });
 
@@ -351,6 +358,17 @@ await page.keyboard.press('Control+z');
 await rendered();
 check(stable((await ed()).doc) === stable(reopened), 'Ctrl+Z takes the generated riff back too');
 await page.screenshot({ path: path.join(SHOTS, 'editor-5b-assistant-undone.png') });
+
+// The plan's monthly bars run out: the assistant says so and nothing changes.
+const barsBefore = assistantBarsUsed;
+assistantBarsUsed = 95;
+const docBefore = stable((await ed()).doc);
+await page.fill('.ai-prompt', 'a riff with bass and drums');
+await page.locator('.ai-prompt').evaluate((el) => (el as HTMLTextAreaElement).blur());
+await page.click('.ai-go');
+await page.waitForSelector('.ai-result .warn', { timeout: 15000 });
+check(/You have 1 of your 96 songwriting assistant bars left this month/.test((await page.locator('.ai-result').textContent()) ?? '') && stable((await ed()).doc) === docBefore, 'when the month\'s bars run out, the editor shows the website\'s message and the song stays as it was');
+assistantBarsUsed = barsBefore;
 
 // More parts: a riff with bass and drums gets two new tracks.
 await page.fill('.ai-prompt', 'a riff with bass and drums');

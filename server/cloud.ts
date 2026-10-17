@@ -22,7 +22,7 @@ import {
   type CloudTabRow,
 } from '../shared/cloud.ts';
 import { HttpError } from './library.ts';
-import type { RiffRequest } from '../shared/editor/assistant.ts';
+import type { AssistantUsage, RiffRequest } from '../shared/editor/assistant.ts';
 import { decidePremium, entitlementFrom, type EntitlementCheck, type PremiumStatus, type SubscriptionRow } from '../shared/premium.ts';
 
 const TIMEOUT_MS = 15_000;
@@ -268,11 +268,12 @@ export class FretlaneCloud {
    * caller with riffToBars()). The website answers errors as `{ error }` with a status that maps to
    * ours: 401 signed out, 402 no plan, 422 Claude declined, 429 daily limit, 503 not set up.
    */
-  async riffAssistant(req: RiffRequest): Promise<unknown> {
+  async riffAssistant(req: RiffRequest): Promise<{ riff: unknown; usage?: AssistantUsage; notice?: string }> {
     const url = new URL('/api/public/app/riff-assistant', this.config.siteUrl).toString();
     const res = await this.authed(url, { method: 'POST', body: JSON.stringify(req), timeoutMs: ASSISTANT_TIMEOUT_MS, passErrors: true });
-    const body = (await res.json().catch(() => ({}))) as { riff?: unknown; error?: string };
-    if (res.ok && body.riff) return body.riff;
+    const body = (await res.json().catch(() => ({}))) as { riff?: unknown; usage?: AssistantUsage; notice?: string; error?: string };
+    // The plan's monthly bars come along: the website charges what Claude wrote.
+    if (res.ok && body.riff) return { riff: body.riff, ...(body.usage ? { usage: body.usage } : {}), ...(body.notice ? { notice: body.notice } : {}) };
     const status = [400, 401, 402, 422, 429, 503].includes(res.status) ? res.status : 502;
     throw new HttpError(status, body.error ?? `The songwriting assistant answered ${res.status}.`);
   }

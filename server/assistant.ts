@@ -10,7 +10,7 @@
  */
 import Anthropic from '@anthropic-ai/sdk';
 import { envVar } from '../shared/brand.ts';
-import { RIFF_SCHEMA, RIFF_SYSTEM_PROMPT, riffRequestProblem, riffUserContent, type RiffRequest } from '../shared/editor/assistant.ts';
+import { RIFF_SCHEMA, RIFF_SYSTEM_PROMPT, riffRequestProblem, riffUserContent, type AssistantUsage, type RiffRequest } from '../shared/editor/assistant.ts';
 import type { FretlaneCloud } from './cloud.ts';
 import { HttpError } from './library.ts';
 
@@ -21,6 +21,10 @@ export type AssistantVia = 'own-key' | 'cloud';
 export interface AssistantAnswer {
   riff: unknown;
   via: AssistantVia;
+  /** Through Fretlane Cloud: the plan's assistant bars this month. */
+  usage?: AssistantUsage;
+  /** Through Fretlane Cloud: e.g. which parts were left out because the month's bars ran out. */
+  notice?: string;
 }
 
 export class RiffAssistant {
@@ -45,7 +49,7 @@ export class RiffAssistant {
     if (!this.cloud.status().connected) {
       throw new HttpError(402, 'The songwriting assistant comes with the Fretlane Cloud plan. Sign in to Fretlane Cloud first.');
     }
-    return { riff: await this.cloud.riffAssistant(req), via: 'cloud' };
+    return { ...(await this.cloud.riffAssistant(req)), via: 'cloud' };
   }
 }
 

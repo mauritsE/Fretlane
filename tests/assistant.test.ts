@@ -12,6 +12,7 @@ import {
   applyRiff,
   asciiTab,
   buildRiffRequest,
+  describeUsage,
   describeWritten,
   riffFromAnswer,
   riffRequestProblem,
@@ -441,18 +442,25 @@ describe('server: RiffAssistant', () => {
     await expect(askClaude(fakeClient(new TypeError('fetch failed')).client, req)).rejects.toThrow(/Could not reach/);
   });
 
+  const usage = { plan: 'Fretlane Cloud', used: 40, allowance: 96, resetsOn: '2026-11-01T00:00:00.000Z' };
+
+  it('describes the month\'s assistant bars for the editor', () => {
+    expect(describeUsage(usage)).toBe('40 of 96 assistant bars used this month (Fretlane Cloud); resets on 1 November.');
+  });
+
   it('uses Fretlane Cloud without an own key, and asks to sign in when signed out', async () => {
     let sent: unknown = null;
     const cloud = {
       status: () => ({ connected: sent !== 'signed-out', email: 'a@b.c', siteUrl: 'https://x' }),
       riffAssistant: async (r: RiffRequest) => {
         sent = r;
-        return reply;
+        return { riff: reply, usage, notice: 'Left out Drums.' };
       },
     } as unknown as FretlaneCloud;
     const assistant = new RiffAssistant(cloud, undefined);
     expect(assistant.via).toBe('cloud');
-    expect(await assistant.riff(req)).toEqual({ riff: reply, via: 'cloud' });
+    // The plan's monthly bars and the website's notice come through to the editor.
+    expect(await assistant.riff(req)).toEqual({ riff: reply, via: 'cloud', usage, notice: 'Left out Drums.' });
     expect(sent).toEqual(req);
     await expect(assistant.riff({ ...req, bars: 99 })).rejects.toBeInstanceOf(HttpError);
     sent = 'signed-out';
