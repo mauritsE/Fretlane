@@ -7,6 +7,8 @@
  */
 import { chromium, type Page } from 'playwright';
 import { existsSync, mkdirSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
+import * as alphaTab from '@coderline/alphatab';
 import { FAKE_YT } from './fakes.ts';
 
 const BASE = process.argv[2] ?? 'http://localhost:5173';
@@ -183,9 +185,24 @@ for (const s of all.filter((x) => x.tags.includes('songbook') || x.tags.includes
 const workerErrors = errors.filter((e) => /unexpected error/.test(e));
 check(workerErrors.length === 0, `every track of every song renders${workerErrors.length ? `: ${workerErrors[0].slice(0, 120)}` : ''}`);
 const king = all.find((x) => x.title === 'In the Hall of the Mountain King')!;
+await page.goto(`${BASE}/#/`);
+{
+  const [download] = await Promise.all([page.waitForEvent('download'), page.click(`.song-card[data-title="${king.title}"] button.download`)]);
+  const gp = alphaTab.importer.ScoreLoader.loadScoreFromBytes(new Uint8Array(await readFile((await download.path())!)), new alphaTab.Settings());
+  check(download.suggestedFilename() === `${king.title}.gp` && gp.tracks.length === 4, 'a library card downloads the song as a Guitar Pro file');
+}
 await page.goto(`${BASE}/#/song/${king.id}`);
 await waitRendered(page);
 check((await page.locator('.track-list li').count()) === 4, 'band arrangement has melody, rhythm, bass and drums');
+{
+  const [download] = await Promise.all([page.waitForEvent('download'), page.click('.topbar button:has-text(".gp")')]);
+  const bytes = new Uint8Array(await readFile((await download.path())!));
+  const gp = alphaTab.importer.ScoreLoader.loadScoreFromBytes(bytes, new alphaTab.Settings());
+  check(
+    download.suggestedFilename() === `${king.title}.gp` && gp.tracks.length === 4 && gp.title === king.title,
+    'the player downloads the song as a Guitar Pro file alphaTab can open again',
+  );
+}
 await page.click('button.play');
 await page.waitForTimeout(2000);
 check((await page.evaluate(() => (window as any).fretlane.at.timePosition as number)) > 500, 'songbook song plays');

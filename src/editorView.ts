@@ -37,6 +37,7 @@ import type { Cursor, Edit, Entry, NoteFlag } from '../shared/editor/commands.ts
 import { api } from './api.ts';
 import { h, toast } from './dom.ts';
 import { metronomeButton } from './metronome.ts';
+import { downloadGp, scoreToGp } from './gpExport.ts';
 import { drumHit, pluck } from './pluck.ts';
 import { ensurePremium } from './premiumView.ts';
 import { makeEditableCopy, soundSelect, tuningField } from './writeDialog.ts';
@@ -219,7 +220,7 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
       undoBtn,
       redoBtn,
       metronomeButton(),
-      h('button', { title: 'Download as a Guitar Pro file', onclick: () => exportGp() }, '⤓ .gp'),
+      h('button', { title: 'Download as a Guitar Pro file', onclick: () => void downloadGp(doc.title, () => scoreToGp(parseTex(docToTex(doc)))) }, '⤓ .gp'),
       h('a.button', { href: `#/song/${encodeURIComponent(song.id)}`, title: 'Practise this song in the player' }, '▶ Practise'),
       h('button.icon', { title: 'Keyboard shortcuts', onclick: () => showHelp() }, '?'),
     ),
@@ -1017,20 +1018,6 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
     dialog.addEventListener('close', () => dialog.remove());
     document.body.append(dialog);
     dialog.showModal();
-  }
-
-  function exportGp(): void {
-    try {
-      const bytes = new alphaTab.exporter.Gp7Exporter().export(parseTex(docToTex(doc)), at.settings);
-      const url = URL.createObjectURL(new Blob([bytes as Uint8Array<ArrayBuffer>], { type: 'application/octet-stream' }));
-      const a = h('a', { href: url, download: `${doc.title.replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'song'}.gp` });
-      document.body.append(a);
-      a.click();
-      a.remove();
-      window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
-    } catch (err) {
-      toast(`Export failed: ${(err as Error).message}`, 'error');
-    }
   }
 
   // ---------- songwriting assistant ----------

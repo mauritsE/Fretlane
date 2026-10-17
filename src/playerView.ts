@@ -12,6 +12,7 @@ import { WaveformView } from './waveform.ts';
 import { MEDIA_KINDS, type MediaKind, type MediaPlayer, type MediaState } from './media.ts';
 import { metronomeButton, setMetronomeSongContext } from './metronome.ts';
 import { makeEditableCopy } from './writeDialog.ts';
+import { downloadGp, tabToGp } from './gpExport.ts';
 
 const QUARTER_TICKS = 960;
 const SYNTH_RATES = [0.25, 0.5, 0.6, 0.7, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5];
@@ -154,6 +155,7 @@ export async function renderPlayer(root: HTMLElement, songId: string): Promise<C
       favBtn,
       doneBtn,
       metronomeButton(),
+      h('button', { title: 'Download as a Guitar Pro file', onclick: () => void downloadGp(song.title, () => tabToGp(tab, song.tabFormat)) }, '⤓ .gp'),
       song.written
         ? h('a.button', { href: `#/write/${encodeURIComponent(song.id)}`, title: 'Change this song in the tab editor' }, '✎ Edit tab')
         : h(
