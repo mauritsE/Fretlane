@@ -98,8 +98,8 @@ input:focus, textarea:focus, select:focus { outline: 2px solid color-mix(in srgb
 .badge.level[data-level='advanced'] { color: var(--danger); }
 .card-title { font-weight: 600; padding: 10px 12px 0; }
 .card-artist { color: var(--muted); padding: 0 12px 8px; }
-.card-meta { display: flex; align-items: center; gap: 4px; padding: 0 6px 8px 12px; margin-top: auto; }
-.card-meta button.icon { padding: 4px 6px; }
+.card-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 2px; padding: 0 6px 8px 12px; margin-top: auto; }
+.card-meta button.icon { padding: 4px 5px; }
 .badge { font-size: 11px; padding: 1px 7px; border-radius: 4px; background: var(--panel-2); color: var(--muted); border: 1px solid var(--line); }
 .badge.yt { color: #ff7b72; }
 .badge.sp { color: #3fb950; }

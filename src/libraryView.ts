@@ -7,6 +7,7 @@ import { metronomeButton } from './metronome.ts';
 import { mediaPicker } from './mediaPicker.ts';
 import { cloudButton } from './cloudView.ts';
 import { writeButton } from './writeDialog.ts';
+import { downloadGp, tabToGp } from './gpExport.ts';
 import { buildSearchQuery } from '../shared/mediaSearch.ts';
 import { AUDIO_ACCEPT, MAX_AUDIO_BYTES } from '../shared/audio.ts';
 
@@ -171,6 +172,11 @@ export async function renderLibrary(root: HTMLElement): Promise<void> {
         archived
           ? h('button.icon.restore', { title: 'Back to the library', onclick: () => patch(s, { archived: false }, `"${s.title}" is back in your library`) }, '↺')
           : h('button.icon.done', { title: 'Mark as done and move to the archive', onclick: () => patch(s, { archived: true }, `✓ "${s.title}" moved to the archive`) }, '✓'),
+        h(
+          'button.icon.download',
+          { title: 'Download as a Guitar Pro file', onclick: () => void downloadGp(s.title, async () => tabToGp(await api.getTab(s.id), s.tabFormat)) },
+          '⤓',
+        ),
         h('button.icon', { title: 'Edit', onclick: () => openSongDialog(s, reload) }, '✎'),
         h(
           'button.icon.danger',
