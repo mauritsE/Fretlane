@@ -5,6 +5,8 @@ import { HttpError, Library, type SeedSource } from './library.ts';
 import { fetchTab } from './fetchTab.ts';
 import { MediaSearch } from './mediaSearch.ts';
 import { FretlaneCloud } from './cloud.ts';
+import { RiffAssistant } from './assistant.ts';
+import type { RiffRequest } from '../shared/editor/assistant.ts';
 import { cloudTabToSongInput, summarizeCloudTab, type CloudConfig } from '../shared/cloud.ts';
 import type { PremiumStatus } from '../shared/premium.ts';
 import type { NewSongInput, SongPatch } from '../shared/types.ts';
@@ -81,6 +83,7 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
   await mediaSearch.init();
   const cloud = new FretlaneCloud(opts.libraryDir, opts.cloud);
   await cloud.init();
+  const assistant = new RiffAssistant(cloud);
 
   /** Fretlane Premium (the tab editor); `force` asks the website again instead of the cached answer. */
   async function premium(force = false): Promise<PremiumStatus> {
@@ -189,6 +192,12 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
 
     // Fretlane Premium (the tab editor). POST asks the website again instead of using the cached answer.
     if (parts[1] === 'premium' && (method === 'GET' || method === 'POST')) return send(res, 200, await premium(method === 'POST'));
+
+    // The songwriting assistant in the tab editor (Premium, like the editor itself).
+    if (parts[1] === 'assistant' && parts[2] === 'riff' && method === 'POST') {
+      await requirePremium();
+      return send(res, 200, await assistant.riff(await readJson<RiffRequest>(req)));
+    }
 
     // `app` lets tools (and the smoke test) recognise this server.
     if (parts[1] === 'health') return send(res, 200, { ok: true, app: APP_ID, library: opts.libraryDir });

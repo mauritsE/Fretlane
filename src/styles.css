@@ -408,3 +408,17 @@ table.keys td { color: var(--muted); padding: 3px 0; }
 .premium-dialog { max-width: 520px; }
 .premium-points { margin: 0; padding-left: 20px; color: var(--muted); }
 .cloud-actions.center { justify-content: center; }
+/* riff assistant (tab editor sidebar) */
+.ai-panel { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
+.ai-panel h3 { margin-bottom: 0; }
+.ai-mode { margin: 0; font-size: 12.5px; color: var(--muted); }
+.ai-prompt { width: 100%; box-sizing: border-box; resize: vertical; font: inherit; font-size: 13px; }
+.ai-ideas { display: flex; flex-wrap: wrap; gap: 4px; }
+.ai-ideas .chip { font-size: 11.5px; padding: 1px 8px; border-radius: 999px; color: var(--muted); }
+.ai-ideas .chip:hover { color: var(--text); border-color: var(--accent); }
+.ai-row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.ai-result { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 13px; }
+.ai-result p { margin: 0 0 6px; }
+.ai-thinking { display: flex; gap: 8px; align-items: center; color: var(--muted); }
+.spinner.small { width: 14px; height: 14px; border-width: 2px; }
+.ai-result .ai-row button { padding: 2px 9px; font-size: 12.5px; }

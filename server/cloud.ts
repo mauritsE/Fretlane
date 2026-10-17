@@ -21,6 +21,7 @@ import {
   type CloudTabRow,
 } from '../shared/cloud.ts';
 import { HttpError } from './library.ts';
+import type { RiffRequest } from '../shared/editor/assistant.ts';
 import { decidePremium, entitlementFrom, type EntitlementCheck, type PremiumStatus, type SubscriptionRow } from '../shared/premium.ts';
 
 const TIMEOUT_MS = 15_000;
@@ -29,6 +30,8 @@ const LOGIN_TTL_MS = 15 * 60_000;
 const MAX_TAB_BYTES = 20 * 1024 * 1024;
 /** How long a premium answer from the website is reused before asking again. */
 const PREMIUM_TTL_MS = 10 * 60_000;
+/** Writing a riff takes Claude a while; the website waits for it before answering. */
+const ASSISTANT_TIMEOUT_MS = 180_000;
 
 interface StoredSession {
   refreshToken: string;
@@ -196,14 +199,40 @@ export class FretlaneCloud {
     await fs.rename(tmp, this.premiumFile);
   }
 
-  /** A signed-in request against the cloud API. Refreshes the session once if the server rejects it. */
-  private async authed(apiPath: string, init: { method?: string; body?: string } = {}): Promise<Response> {
+  /**
+   * The songwriting assistant for Premium users without their own API key: the website calls Claude
+   * with its key, after checking the plan and a daily limit. Returns Claude's riff (validated by the
+   * caller with riffToBars()). The website answers errors as `{ error }` with a status that maps to
+   * ours: 401 signed out, 402 no plan, 422 Claude declined, 429 daily limit, 503 not set up.
+   */
+  async riffAssistant(req: RiffRequest): Promise<unknown> {
+    const url = new URL('/api/public/app/riff-assistant', this.config.siteUrl).toString();
+    const res = await this.authed(url, { method: 'POST', body: JSON.stringify(req), timeoutMs: ASSISTANT_TIMEOUT_MS, passErrors: true });
+    const body = (await res.json().catch(() => ({}))) as { riff?: unknown; error?: string };
+    if (res.ok && body.riff) return body.riff;
+    const status = [400, 401, 402, 422, 429, 503].includes(res.status) ? res.status : 502;
+    throw new HttpError(status, body.error ?? `The songwriting assistant answered ${res.status}.`);
+  }
+
+  /**
+   * A signed-in request against the cloud API (a path) or the website (a full URL). Refreshes the
+   * session once if the server rejects it. `passErrors` hands other error answers to the caller.
+   */
+  private async authed(
+    target: string,
+    init: { method?: string; body?: string; timeoutMs?: number; passErrors?: boolean } = {},
+  ): Promise<Response> {
+    const url = /^https?:/.test(target) ? target : this.config.apiUrl + target;
     const send = (token: string) =>
-      this.request(this.config.apiUrl + apiPath, {
-        method: init.method ?? 'GET',
-        headers: { ...this.headers(token), ...(init.body !== undefined ? { 'content-type': 'application/json' } : {}) },
-        ...(init.body !== undefined ? { body: init.body } : {}),
-      });
+      this.request(
+        url,
+        {
+          method: init.method ?? 'GET',
+          headers: { ...this.headers(token), ...(init.body !== undefined ? { 'content-type': 'application/json' } : {}) },
+          ...(init.body !== undefined ? { body: init.body } : {}),
+        },
+        init.timeoutMs,
+      );
     let session = await this.currentSession();
     let res = await send(session.accessToken);
     if (res.status === 401 || res.status === 403) {
@@ -211,7 +240,7 @@ export class FretlaneCloud {
       res = await send(session.accessToken);
     }
     if (res.status === 401) throw new HttpError(401, 'Your Fretlane Cloud sign-in has expired. Sign in again.');
-    if (!res.ok) throw new HttpError(502, `Fretlane Cloud answered ${res.status}.`);
+    if (!res.ok && !init.passErrors) throw new HttpError(502, `Fretlane Cloud answered ${res.status}.`);
     return res;
   }
 
@@ -279,9 +308,9 @@ export class FretlaneCloud {
     return { apikey: this.config.apiKey, ...(accessToken ? { authorization: `Bearer ${accessToken}` } : {}) };
   }
 
-  private async request(url: string, init: RequestInit): Promise<Response> {
+  private async request(url: string, init: RequestInit, timeoutMs = TIMEOUT_MS): Promise<Response> {
     try {
-      return await this.fetchImpl(url, { ...init, signal: AbortSignal.timeout(TIMEOUT_MS) });
+      return await this.fetchImpl(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
     } catch {
       throw new HttpError(502, 'Could not reach Fretlane Cloud. Are you online?');
     }

@@ -16,6 +16,17 @@ import {
 import { docToTex } from '../shared/editor/tex.ts';
 import { scoreToDoc } from '../shared/editor/fromScore.ts';
 import * as cmd from '../shared/editor/commands.ts';
+import {
+  MAX_PROMPT_CHARS,
+  MAX_RIFF_BARS,
+  applyRiff,
+  buildRiffRequest,
+  riffRequestProblem,
+  riffTimeSignatures,
+  riffToBars,
+  type RiffRequest,
+  type RiffTarget,
+} from '../shared/editor/assistant.ts';
 import type { Cursor, Edit, Entry, NoteFlag } from '../shared/editor/commands.ts';
 import { api } from './api.ts';
 import { h, toast } from './dom.ts';
@@ -72,6 +83,13 @@ const SHORTCUTS: [string, string][] = [
   ['Space', 'Play from the cursor / pause'],
   ['Esc', 'Clear the bar selection'],
 ];
+
+/** Starting points for the riff assistant, filled into the prompt box with a click. */
+const IMPROVE_IDEAS = ['Make it heavier', 'More groove', 'Easier to play', 'Add a fill at the end', 'Make it sound more bluesy'];
+const GENERATE_IDEAS: Record<TrackKind, string[]> = {
+  guitar: ['Palm-muted chug, in the style of 2000s metal', 'Funky sixteenth-note riff in E minor', 'Bluesy shuffle in A', 'Slow, dark doom riff', 'Bright arpeggios, let ring'],
+  bass: ['Driving eighth-note bass line in E', 'Funky slap-style groove in A', 'Walking blues bass line in G', 'Simple root-fifth groove for a chorus'],
+};
 
 function parseTex(tex: string): alphaTab.model.Score {
   const importer = new alphaTab.importer.AlphaTexImporter();
@@ -165,6 +183,15 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
   const loopBtn = h('button.toggle', { title: 'Loop the selected bars (or the cursor bar)' }, '⟲ Loop');
   const zoomSel = h('select', { title: 'Zoom' }, ...[0.75, 0.9, 1, 1.2, 1.4].map((z) => h('option', { value: z, selected: z === 1 }, `${Math.round(z * 100)}%`)));
 
+  const aiMode = h('p.ai-mode');
+  const aiPrompt = h('textarea.ai-prompt', { rows: 3, maxlength: MAX_PROMPT_CHARS, 'aria-label': 'What the assistant should do' });
+  const aiIdeas = h('div.ai-ideas');
+  const aiBars = h('select', { title: 'How many bars to write' }, ...[1, 2, 4, 8].map((n) => h('option', { value: n, selected: n === 2 }, `${n} bar${n === 1 ? '' : 's'}`)));
+  const aiBarsLabel = h('label.inline', {}, aiBars);
+  const aiGo = h('button.primary.ai-go', { title: 'Ctrl+Enter in the box does the same' });
+  const aiResult = h('div.ai-result.hidden');
+  const aiPanel = h('section.ai-panel', {}, h('h3', {}, '✨ Riff assistant'), aiMode, aiPrompt, aiIdeas, h('div.ai-row', {}, aiBarsLabel, h('span.spacer'), aiGo), aiResult);
+
   root.replaceChildren(
     h(
       'header.topbar',
@@ -192,6 +219,7 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
         trackList,
         h('button.add-track', { onclick: () => openTrackDialog(null) }, '+ Track'),
         h('p.hint.sidebar-hint', {}, 'Type fret numbers. Arrows move. Press ? for all keys.'),
+        aiPanel,
       ),
       h(
         'section.editor-area',
@@ -304,6 +332,10 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
       get saved() {
         return !dirty && !saving;
       },
+      /** The riff assistant is waiting for Claude (for tests). */
+      get assistantBusy() {
+        return aiBusy !== null;
+      },
     },
   };
 
@@ -358,6 +390,7 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
     drawToolbar();
     drawStatus();
     drawTracks();
+    drawAssistant();
     titleEl.replaceChildren(h('strong', {}, doc.title), h('span', {}, ` — ${doc.artist}`));
     undoBtn.disabled = !history.canUndo;
     redoBtn.disabled = !history.canRedo;
@@ -906,6 +939,132 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
       toast(`Export failed: ${(err as Error).message}`, 'error');
     }
   }
+
+  // ---------- songwriting assistant ----------
+  // With bars selected (Shift + arrows or Shift + click) it improves them; otherwise it writes a new
+  // riff from the prompt at the cursor bar, or after it when that bar already has notes. The result
+  // is a normal edit, so Ctrl+Z takes it back.
+  let aiBusy: AbortController | null = null;
+  /** The last riff put in the song, for "Try again" and "Undo". `doc` is the document right after it. */
+  let lastAi: { request: RiffRequest; target: RiffTarget; track: number; doc: SongDoc } | null = null;
+  let aiShownMode = '';
+
+  /** Where a new riff goes: the cursor bar if it's still empty on this track, else the bar after it. */
+  function generateAt(): number {
+    const filled = doc.bars[cursor.bar].tracks[cursor.track]?.some((b) => b.notes.length);
+    return filled ? cursor.bar + 1 : cursor.bar;
+  }
+
+  function drawAssistant(): void {
+    const improving = selectAnchor !== null;
+    const r = selection();
+    const count = r.to - r.from + 1;
+    const mode = improving ? 'improve' : 'generate';
+    aiMode.textContent = improving
+      ? `Improve bar${count === 1 ? '' : 's'} ${r.from + 1}${count === 1 ? '' : `–${r.to + 1}`} of ${doc.tracks[cursor.track].name}.`
+      : `Write a new riff from bar ${generateAt() + 1}. Select bars (Shift + ← →) to improve them instead.`;
+    aiBarsLabel.classList.toggle('hidden', improving);
+    aiGo.textContent = aiBusy ? '■ Stop' : improving ? '✨ Improve' : '✨ Write';
+    aiGo.disabled = !aiBusy && improving && count > MAX_RIFF_BARS;
+    if (aiGo.disabled) aiMode.textContent = `Select at most ${MAX_RIFF_BARS} bars to improve.`;
+    aiPrompt.disabled = !!aiBusy;
+    const ideasKey = `${mode}:${doc.tracks[cursor.track].kind}`;
+    if (ideasKey === aiShownMode) return;
+    aiShownMode = ideasKey;
+    aiPrompt.placeholder = improving ? 'What should change? (optional) e.g. "more syncopation"' : 'Describe the riff, e.g. "a funky riff in E minor"';
+    const ideas = improving ? IMPROVE_IDEAS : GENERATE_IDEAS[doc.tracks[cursor.track].kind];
+    aiIdeas.replaceChildren(...ideas.map((idea) => h('button.chip', { type: 'button', onclick: () => (aiPrompt.value = idea) }, idea)));
+  }
+
+  function showAiResult(...children: (HTMLElement | string)[]): void {
+    aiResult.replaceChildren(...children);
+    aiResult.classList.toggle('hidden', !children.length);
+  }
+
+  async function runAssistant(again = false): Promise<void> {
+    if (aiBusy) {
+      aiBusy.abort();
+      return;
+    }
+    let request: RiffRequest;
+    let target: RiffTarget;
+    let track: number;
+    if (again && lastAi) {
+      // Take the previous attempt out first, so the new one starts from the same song.
+      if (doc === lastAi.doc) restore(history.undo({ doc, cursor }));
+      ({ request, target, track } = lastAi);
+    } else {
+      track = cursor.track;
+      const prompt = aiPrompt.value.trim();
+      if (selectAnchor !== null) {
+        const range = selection();
+        target = { replace: range };
+        request = buildRiffRequest(doc, track, { mode: 'improve', range, prompt });
+      } else {
+        const at = generateAt();
+        target = { at };
+        request = buildRiffRequest(doc, track, { mode: 'generate', at, bars: Number(aiBars.value), prompt });
+      }
+    }
+    const problem = riffRequestProblem(request);
+    if (problem) {
+      showAiResult(h('p.hint.warn', {}, problem));
+      if (!request.prompt) aiPrompt.focus();
+      return;
+    }
+    const controller = new AbortController();
+    aiBusy = controller;
+    drawAssistant();
+    showAiResult(h('p.ai-thinking', {}, h('span.spinner.small'), request.mode === 'improve' ? 'Reworking your riff…' : 'Writing a riff…'));
+    try {
+      const { riff } = await api.riffAssistant(request, controller.signal);
+      const ts = riffTimeSignatures(doc, track, target, MAX_RIFF_BARS);
+      const result = riffToBars(riff, doc.tracks[track].tuning.length, (i) => ts[i]);
+      const e = applyRiff(doc, cursor, track, target, result.bars);
+      if (track !== cursor.track) renderedTrack = -1;
+      apply(e);
+      // Select the new bars: "Improve" works on them next, and the loop plays them.
+      selectAnchor = e.range.to;
+      lastAi = { request, target, track, doc };
+      afterChange(-1);
+      const where = e.range.from === e.range.to ? `bar ${e.range.from + 1}` : `bars ${e.range.from + 1}–${e.range.to + 1}`;
+      showAiResult(
+        h('p', {}, result.explanation || (request.mode === 'improve' ? 'Here is a reworked version.' : 'Here is a new riff.')),
+        ...result.fixes.map((f) => h('p.hint', {}, f)),
+        h('p.hint', {}, `Now in ${where}. Ctrl+Z takes it back.`),
+        h(
+          'div.ai-row',
+          {},
+          h('button', { type: 'button', title: 'Play the new bars', onclick: () => playFromCursor() }, '▶ Play'),
+          h('button', { type: 'button', title: 'Ask again with the same words', onclick: () => void runAssistant(true) }, '⟳ Try again'),
+          h('button', { type: 'button', title: 'Take the riff out again', onclick: () => undoAssistant() }, '↶ Undo'),
+        ),
+      );
+    } catch (err) {
+      showAiResult(h('p.hint.warn', {}, controller.signal.aborted ? 'Stopped.' : (err as Error).message));
+    } finally {
+      aiBusy = null;
+      drawAssistant();
+    }
+  }
+
+  function undoAssistant(): void {
+    if (lastAi && doc === lastAi.doc) {
+      restore(history.undo({ doc, cursor }));
+      selectAnchor = null;
+      afterChange(-1);
+      showAiResult();
+    } else toast('The song changed since then. Use Ctrl+Z to step back.');
+  }
+
+  aiGo.onclick = () => void runAssistant();
+  aiPrompt.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      void runAssistant();
+    } else if (e.key === 'Escape') aiPrompt.blur();
+  });
+  cleanups.push(() => aiBusy?.abort());
 
   // ---------- go ----------
   render(0);
