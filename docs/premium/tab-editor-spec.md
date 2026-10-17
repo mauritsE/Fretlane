@@ -102,10 +102,10 @@ validation and the save path. M0 measured the re-render cost; see
 
 - Techniques: hammer-on/pull-off, slide, bend, vibrato, palm mute, let ring, dead note.
 - Sections and markers (Intro, Verse, Chorus), so a song gets a shape.
-- Cloud sync and version history for written songs.
+- Cloud sync (*built*: a backup of each written song, see the notes) and version history for written songs.
 - Edit imported tabs (see the open questions on round-trip fidelity).
 - A second voice per staff.
-- Drum track entry. (*Built*: drum tracks with a fixed kit, typed with ↑ ↓ and a digit; no drum techniques yet.)
+- Drum track entry. (*Built*: drum tracks with a fixed kit, typed with ↑ ↓ and Enter or a digit; no drum techniques yet. Ukulele, mandolin and banjo tracks too.)
 - Lyrics under the tab.
 - **Riff assistant** (*built*, after v1): select bars and ask Claude to improve them, or describe a
   riff and have Claude write it at the cursor; on request it also writes a second guitar, a bass line
@@ -258,8 +258,27 @@ No targets are set yet; set them after the first beta cohort, not before.
 the document model existed: techniques (hammer/pull, slide, vibrato, full bend, palm mute, let
 ring, dead note, tie) and section names. Also time signature and tempo changes per bar, 4–8
 string tunings (presets plus custom), several guitar/bass tracks, and "✎ Make my version" for
-tabs not written in Fretlane. Not built: cloud sync of written songs, second voices, drums,
-lyrics, recording a riff into notes.
+tabs not written in Fretlane. Not built: second voices, lyrics, recording a riff into notes.
+
+**Added after v1: more instruments.** Besides guitar, bass and drums (the drum kit is described in
+`CLAUDE.md` and `doc.ts#DRUM_KIT`), a track can be a ukulele, mandolin or banjo (`INSTRUMENTS`).
+They are ordinary tab tracks with their own tuning presets (re-entrant ukulele and 5-string banjo
+included) and the closest General MIDI sound (GM has no ukulele or mandolin). alphaTex doesn't
+record the instrument, so `fromScore.ts` reads it back from the tuning preset and the MIDI program.
+On a drum track the caret sits where the drum's note head goes (`drumStaffLine`, read from
+alphaTab's articulations and checked against note heads in `e2e/editor.ts`), a click picks the
+nearest drum, and drums from other tabs map onto the nearest drum of the kit (a second crash plays
+on the crash). The riff assistant writes guitar, bass and drum parts; on a ukulele, mandolin or
+banjo track it writes the part on a new guitar track instead.
+
+**Added after v1: Fretlane Cloud backup.** `server/cloudSync.ts` uploads a written song a few
+seconds after it changes (editor autosave, title, recording), while signed in; changes made signed
+out or offline go up after sign-in or at the next start. The first upload creates a row in the
+website's `tabs` table (format `atex`) and sets the song's `cloudId`; later uploads replace it.
+The `tabs` bucket has no update policy, so each version is a new file that the row then points
+at, and the old file is deleted. `cloudSyncedAt` (the `updatedAt` that was uploaded) marks what
+still needs uploading. Row-level security refuses uploads without the plan; that shows as
+"☁ Not synced" with the reason. No website change was needed.
 
 **Files.** `shared/editor/doc.ts` (document, ticks, rest filling, bar status, tunings),
 `shared/editor/commands.ts` (every edit as a pure function, plus undo history),

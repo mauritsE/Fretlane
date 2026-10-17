@@ -465,6 +465,8 @@ export function removeTrack(doc: SongDoc, c: Cursor, index: number): Edit {
 export function updateTrack(doc: SongDoc, c: Cursor, index: number, change: Partial<Pick<DocTrack, 'name' | 'sound' | 'tuning'>>): Edit {
   const track = doc.tracks[index];
   if (!track) return same(doc, c);
+  // A drum track's lanes are its kit, not a tuning, and its sound is always the drum kit.
+  if (track.kind === 'drums') change = change.name !== undefined ? { name: change.name } : {};
   const next: DocTrack = { ...track, ...change, tuning: [...(change.tuning ?? track.tuning)] };
   if (change.name !== undefined) next.name = change.name.trim() || track.name;
   const tracks = doc.tracks.slice();

@@ -6,6 +6,10 @@ import {
   TIME_SIGNATURES,
   barStatus,
   describeTicks,
+  drumLaneAt,
+  drumStaffLine,
+  INSTRUMENTS,
+  instrumentLabel,
   laneName,
   pitchName,
   type DocBar,
@@ -78,7 +82,7 @@ const SHORTCUTS: [string, string][] = [
   ['Delete / Backspace', 'Remove the note, then the beat'],
   ['Insert or I', 'Insert a beat before the cursor'],
   ['H S V B P L X T', 'Hammer/pull, slide, vibrato, bend, palm mute, let ring, dead note, tie'],
-  ['Drum track', '↑ ↓ pick the drum, any digit adds a hit, Delete removes it'],
+  ['Drum track', '↑ ↓ pick the drum, Enter or any digit adds a hit, Delete removes it'],
   ['Ctrl + C / X / V', 'Copy / cut / paste bars (paste goes after the cursor bar)'],
   ['Ctrl + Delete', 'Delete the selected bars'],
   ['Ctrl + Z, Ctrl + Shift + Z', 'Undo, redo'],
@@ -92,6 +96,10 @@ const GENERATE_IDEAS: Record<TrackKind, string[]> = {
   guitar: ['Palm-muted chug, in the style of 2000s metal', 'Funky sixteenth-note riff in E minor, with bass and drums', 'Bluesy shuffle in A', 'Slow, dark doom riff with drums', 'Two guitars: a riff and a harmony'],
   bass: ['Driving eighth-note bass line in E', 'Funky groove in A, with drums', 'Walking blues bass line in G', 'Simple root-fifth groove for a chorus'],
   drums: ['Straight rock beat', 'Half-time groove with ghost notes', 'Driving punk beat', 'Shuffle feel on the ride'],
+  // The assistant writes guitar, bass and drum parts; on these tracks it offers no starting points.
+  ukulele: [],
+  mandolin: [],
+  banjo: [],
 };
 
 function parseTex(tex: string): alphaTab.model.Score {
@@ -154,6 +162,7 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
   // ---------- layout ----------
   const titleEl = h('button.song-heading.link', { title: 'Song title, artist and tempo' });
   const saveEl = h('span.save-state', {}, 'Saved');
+  const cloudEl = h('span.cloud-state.hidden');
   const undoBtn = h('button.icon', { title: 'Undo (Ctrl+Z)' }, '↶');
   const redoBtn = h('button.icon', { title: 'Redo (Ctrl+Shift+Z)' }, '↷');
   const trackList = h('ul.track-list');
@@ -205,6 +214,7 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
       titleEl,
       h('span.spacer'),
       saveEl,
+      cloudEl,
       undoBtn,
       redoBtn,
       metronomeButton(),
@@ -450,6 +460,7 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
       // Browsers refuse keepalive bodies over 64 KB; a long song then saves without it.
       song = await api.saveTab(song.id, tex, keepalive && tex.length < 60_000);
       if (!dirty) saveEl.textContent = 'Saved';
+      if (!keepalive) watchCloud();
     } catch (err) {
       dirty = true;
       saveEl.textContent = 'Not saved';
@@ -460,6 +471,40 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
       saving = false;
     }
   }
+  // ---------- Fretlane Cloud backup ----------
+  // The server uploads written songs a few seconds after they change (server/cloudSync.ts); this
+  // only shows how that stands, asking again while an upload is waiting or running.
+  let cloudTimer: number | undefined;
+  let cloudGone = false;
+  cleanups.push(() => {
+    cloudGone = true;
+    window.clearTimeout(cloudTimer);
+  });
+  function watchCloud(delay = 0): void {
+    window.clearTimeout(cloudTimer);
+    cloudTimer = window.setTimeout(async () => {
+      let status: Awaited<ReturnType<typeof api.cloudSync>>;
+      try {
+        status = await api.cloudSync(song.id);
+      } catch {
+        return;
+      }
+      if (cloudGone) return;
+      cloudEl.classList.toggle('hidden', status.state === 'off');
+      cloudEl.classList.toggle('error', status.state === 'error');
+      cloudEl.textContent = { off: '', pending: '☁ …', syncing: '☁ Syncing…', synced: '☁ Synced', error: '☁ Not synced' }[status.state];
+      cloudEl.title =
+        status.state === 'error'
+          ? `Not backed up to Fretlane Cloud: ${status.message ?? 'unknown error'}`
+          : status.state === 'synced'
+            ? 'Backed up to your Fretlane Cloud library'
+            : 'Backing up to your Fretlane Cloud library';
+      if (status.state === 'pending' || status.state === 'syncing') watchCloud(2000);
+      else if (status.state === 'error') watchCloud(30_000);
+    }, delay);
+  }
+  watchCloud();
+
   const onUnload = () => void save(true);
   window.addEventListener('beforeunload', onUnload);
   cleanups.push(() => {
@@ -534,7 +579,7 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
             },
           },
           h('span.track-name', {}, t.name),
-          h('small', {}, t.kind === 'drums' ? 'Drum kit' : `${t.kind === 'bass' ? 'Bass' : 'Guitar'} · ${[...t.tuning].reverse().map((p) => pitchName(p).replace(/-?\d+$/, '')).join(' ')}`),
+          h('small', {}, t.kind === 'drums' ? 'Drum kit' : `${instrumentLabel(t.kind)} · ${[...t.tuning].reverse().map((p) => pitchName(p).replace(/-?\d+$/, '')).join(' ')}`),
           h(
             'span.track-buttons',
             {},
@@ -607,7 +652,12 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
         const label = box('caret-label', x - 40, bb.visualBounds.y - 22, 80, 16);
         label.append(h('span', {}, laneName(doc.tracks[cursor.track], cursor.string)));
         marks.push(label);
-        revealInViewport(bb.visualBounds.y);
+        // And a box where that drum's note head goes (half spaces down from the top line).
+        const half = bb.visualBounds.h / 8;
+        const y = bb.visualBounds.y + drumStaffLine(doc.tracks[cursor.track].tuning[cursor.string - 1]) * half;
+        const dsize = Math.max(10, half * 1.9);
+        marks.push(box('caret', x - dsize / 2, y - dsize / 2, dsize, dsize));
+        revealInViewport(y);
       } else {
         const y = stringY(bb, cursor.string);
         marks.push(box('caret', x - size / 2, y - size / 2, size, size));
@@ -641,7 +691,10 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
     const bar = beat.voice.bar.index;
     const bb = barBounds(bar);
     let string = cursor.string;
-    if (bb && doc.tracks[cursor.track].kind !== 'drums') {
+    if (bb && doc.tracks[cursor.track].kind === 'drums') {
+      // A click on the drum staff picks the drum drawn nearest it.
+      string = drumLaneAt((y - bb.visualBounds.y) / (bb.visualBounds.h / 8), doc.tracks[cursor.track].tuning);
+    } else if (bb) {
       const strings = doc.tracks[cursor.track].tuning.length;
       const step = bb.visualBounds.h / Math.max(1, strings - 1);
       string = Math.round((y - bb.visualBounds.y) / step) + 1;
@@ -721,6 +774,7 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
     const key = e.key;
     let handled = true;
     if (/^[0-9]$/.test(key) && !ctrl && !e.altKey) typeDigit(Number(key));
+    else if (key === 'Enter' && !ctrl && doc.tracks[cursor.track].kind === 'drums') apply(cmd.typeFret(doc, cursor, 0, entry), { audition: true });
     else if (key === 'ArrowRight' || key === 'ArrowLeft') {
       const dir = key === 'ArrowRight' ? 1 : -1;
       lastDigit = null;
@@ -878,18 +932,31 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
   function openTrackDialog(index: number | null): void {
     const existing = index === null ? null : doc.tracks[index];
     let kind: TrackKind = existing?.kind ?? 'guitar';
-    const name = h('input', { value: existing?.name ?? '', placeholder: 'Guitar 2' });
-    const kindSel = h('select', { disabled: !!existing }, h('option', { value: 'guitar', selected: kind === 'guitar' }, 'Guitar'), h('option', { value: 'bass', selected: kind === 'bass' }, 'Bass'), h('option', { value: 'drums', selected: kind === 'drums' }, 'Drums'));
+    const name = h('input', { value: existing?.name ?? '', placeholder: defaultTrackName(kind) });
+    const kindSel = h('select', { disabled: !!existing, 'aria-label': 'Instrument' }, ...INSTRUMENTS.map((i) => h('option', { value: i.kind, selected: kind === i.kind }, i.label)));
     let tuning = tuningField(kind, existing?.tuning);
     let sound = soundSelect(kind, existing?.sound);
     const tuningHost = h('label', {}, 'Tuning', tuning.el);
     const soundHost = h('label', {}, 'Sound', sound);
+    const hint = h('small.hint');
+    const showKind = () => {
+      // A drum track has one kit and one sound: nothing to pick.
+      const drums = kind === 'drums';
+      tuningHost.classList.toggle('hidden', drums);
+      soundHost.classList.toggle('hidden', drums);
+      hint.textContent = drums
+        ? 'A full kit: crash, ride, hi-hats, toms, snare, side stick and kick. ↑ ↓ pick the drum, Enter or a number key adds a hit.'
+        : 'Retuning keeps the frets you wrote, so the notes sound in the new tuning.';
+      name.placeholder = defaultTrackName(kind);
+    };
+    showKind();
     kindSel.onchange = () => {
       kind = kindSel.value as TrackKind;
       tuning = tuningField(kind);
       sound = soundSelect(kind);
       tuningHost.replaceChildren('Tuning', tuning.el);
       soundHost.replaceChildren('Sound', sound);
+      showKind();
     };
     const remove =
       index !== null && doc.tracks.length > 1
@@ -909,7 +976,7 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
         : null;
     dialogShell(
       existing ? 'Track settings' : 'Add a track',
-      [h('label', {}, 'Name', name), h('label', {}, 'Instrument', kindSel), tuningHost, soundHost, h('small.hint', {}, 'Retuning keeps the frets you wrote, so the notes sound in the new tuning.')],
+      [h('label', {}, 'Name', name), h('label', {}, 'Instrument', kindSel), tuningHost, soundHost, hint],
       () => {
         const t = tuning.value();
         if (!t) throw new Error('Type the tuning as note names, lowest string first (4 to 8 strings).');
@@ -917,13 +984,20 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
           renderedTrack = -1;
           apply(cmd.updateTrack(doc, cursor, index, { name: name.value, sound: sound.value, tuning: t }));
         } else {
-          const track: DocTrack = { name: name.value.trim() || (kind === 'bass' ? 'Bass' : kind === 'drums' ? 'Drums' : `Guitar ${doc.tracks.filter((x) => x.kind === 'guitar').length + 1}`), kind, sound: sound.value, tuning: t };
+          const track: DocTrack = { name: name.value.trim() || defaultTrackName(kind), kind, sound: sound.value, tuning: t };
           apply(cmd.addTrack(doc, cursor, track));
         }
         return true;
       },
       remove ? [remove] : [],
     );
+  }
+
+  /** "Guitar 2" when the song already has a guitar, else "Guitar". */
+  function defaultTrackName(kind: TrackKind): string {
+    const label = instrumentLabel(kind);
+    const count = doc.tracks.filter((t) => t.kind === kind).length;
+    return count ? `${label} ${count + 1}` : label;
   }
 
   function showHelp(): void {

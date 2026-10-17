@@ -4,6 +4,8 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   cloudSyncPoints,
+  cloudTabFields,
+  needsCloudSync,
   cloudTabExtension,
   cloudTabMedia,
   cloudTabToSongInput,
@@ -14,6 +16,7 @@ import {
   type CloudTabRow,
 } from '../shared/cloud.ts';
 import { FretlaneCloud } from '../server/cloud.ts';
+import { CloudSync } from '../server/cloudSync.ts';
 import { HttpError, Library } from '../server/library.ts';
 
 const YT = 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
@@ -101,13 +104,47 @@ class FakeSupabase {
   kofiEnd: string | null = null;
   /** Simulates no network: every request fails like fetch does offline. */
   offline = false;
+  /** Row-level security lets the user write tabs (they have the plan). */
+  canWrite = true;
 
   private issue(): Response {
     const access = `access-${++this.n}`;
     const refresh = `refresh-${this.n}`;
     this.accessTokens.add(access);
     this.refreshTokens.add(refresh);
-    return Response.json({ access_token: access, refresh_token: refresh, expires_in: 3600, user: { email: 'me@example.com' } });
+    return Response.json({ access_token: access, refresh_token: refresh, expires_in: 3600, user: { email: 'me@example.com', id: 'user-1' } });
+  }
+
+  /** The storage and PostgREST writes the app makes when it backs a song up. */
+  private write(url: URL, init: RequestInit | undefined): Response | null {
+    const method = init?.method ?? 'GET';
+    const denied = () => Response.json({ statusCode: '403', error: 'Unauthorized', message: 'new row violates row-level security policy' }, { status: 400 });
+    const file = url.pathname.match(/^\/storage\/v1\/object\/tabs\/(.+)$/);
+    if (file && method === 'POST') {
+      if (!this.canWrite) return denied();
+      const key = decodeURIComponent(file[1]);
+      if (key.split('/')[0] !== 'user-1' || this.files[key]) return denied();
+      this.files[key] = new Uint8Array(init!.body as Uint8Array);
+      return Response.json({ Key: `tabs/${key}` });
+    }
+    if (file && method === 'DELETE') {
+      delete this.files[decodeURIComponent(file[1])];
+      return Response.json([{}]);
+    }
+    if (url.pathname === '/rest/v1/tabs' && (method === 'POST' || method === 'PATCH')) {
+      const body = JSON.parse(String(init!.body)) as Partial<CloudTabRow>;
+      if (method === 'POST') {
+        if (!this.canWrite) return Response.json({ code: '42501', message: 'new row violates row-level security policy for table "tabs"' }, { status: 403 });
+        const created = { ...row({ id: `new-${this.rows.length + 1}`, sync_offset: null }), ...body };
+        this.rows.push(created);
+        return Response.json([{ id: created.id }], { status: 201 });
+      }
+      const id = url.searchParams.get('id')?.replace(/^eq\./, '');
+      const hits = this.rows.filter((r) => r.id === id);
+      for (const r of hits) Object.assign(r, body);
+      return Response.json(hits.map((r) => ({ id: r.id })));
+    }
+    return null;
   }
 
   fetch: typeof fetch = async (input, init) => {
@@ -116,7 +153,7 @@ class FakeSupabase {
     this.calls.push(`${init?.method ?? 'GET'} ${url.pathname}${url.search}`);
     if (this.offline) throw new TypeError('fetch failed');
     if (headers.get('apikey') !== 'pk') return new Response('no apikey', { status: 401 });
-    const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, string>) : {};
+    const body = typeof init?.body === 'string' && init.body.startsWith('{') ? (JSON.parse(init.body) as Record<string, string>) : {};
     if (url.pathname === '/auth/v1/verify') {
       return body.type === 'magiclink' && body.token_hash === 'good-hash' ? this.issue() : Response.json({ msg: 'Token has expired or is invalid' }, { status: 403 });
     }
@@ -128,6 +165,9 @@ class FakeSupabase {
     if (url.pathname === '/auth/v1/logout') return new Response(null, { status: 204 });
     const token = headers.get('authorization')?.replace('Bearer ', '') ?? '';
     if (!this.accessTokens.has(token)) return Response.json({ message: 'JWT expired' }, { status: 401 });
+    if (url.pathname === '/auth/v1/user') return Response.json({ id: 'user-1', email: 'me@example.com' });
+    const written = this.write(url, init);
+    if (written) return written;
     if (url.pathname === '/rest/v1/subscriptions') return Response.json(this.subscription ? [this.subscription] : []);
     if (url.pathname === '/rest/v1/rpc/my_kofi_membership' && init?.method === 'POST') return Response.json(this.kofiEnd);
     if (url.pathname === '/rest/v1/tabs') {
@@ -180,7 +220,7 @@ describe('FretlaneCloud', () => {
     await signIn(c);
     expect(c.status()).toEqual({ connected: true, email: 'me@example.com', siteUrl: 'https://site.example' });
     const file = path.join(root, 'cloud.json');
-    expect(JSON.parse(await fs.readFile(file, 'utf8'))).toEqual({ refreshToken: 'refresh-1', email: 'me@example.com' });
+    expect(JSON.parse(await fs.readFile(file, 'utf8'))).toEqual({ refreshToken: 'refresh-1', email: 'me@example.com', userId: 'user-1' });
     if (process.platform !== 'win32') expect((await fs.stat(file)).mode & 0o777).toBe(0o600);
   });
 
@@ -319,3 +359,120 @@ describe('Fretlane Premium check', () => {
     expect(await c.premium()).toMatchObject({ premium: false, reason: 'signed-out' });
   });
 });
+
+describe('backing written songs up to Fretlane Cloud', () => {
+  const TEX = '\\title "Mine"\n\\track "Guitar"\n\\staff {tabs}\n0.6.1 |\n';
+
+  async function setup(): Promise<{ c: FretlaneCloud; lib: Library; sync: CloudSync }> {
+    const c = await cloud();
+    const lib = new Library(root);
+    await lib.init();
+    return { c, lib, sync: new CloudSync(lib, c, 5) };
+  }
+
+  it('describes the cloud row for a song', () => {
+    expect(cloudTabFields({ title: ' Mine ', artist: '', youtubeId: 'dQw4w9WgXcQ', spotifyId: '' })).toEqual({
+      title: 'Mine',
+      artist: null,
+      format: 'atex',
+      youtube_url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+      spotify_url: null,
+    });
+    expect(cloudTabFields({ title: 'x'.repeat(300), artist: 'Me', youtubeId: '', spotifyId: '4uLU6hMCjMI75M1A2tKUQC' })).toMatchObject({ artist: 'Me', spotify_url: SP });
+    expect(cloudTabFields({ title: 'x'.repeat(300), artist: '', youtubeId: '', spotifyId: '' }).title).toHaveLength(200);
+    expect(needsCloudSync({ written: true, updatedAt: 'b', cloudSyncedAt: 'a' })).toBe(true);
+    expect(needsCloudSync({ written: true, updatedAt: 'a', cloudSyncedAt: 'a' })).toBe(false);
+    expect(needsCloudSync({ written: false, updatedAt: 'b' })).toBe(false);
+  });
+
+  it('uploads a new song, then replaces it with each new version', async () => {
+    const { c, lib, sync } = await setup();
+    await signIn(c);
+    const song = await lib.add({ title: 'Mine', written: true, tabText: TEX });
+    expect(sync.status(song.id).state).toBe('pending');
+    sync.schedule(song.id);
+    await sync.idle();
+    expect(sync.status(song.id).state).toBe('synced');
+    const synced = lib.get(song.id)!;
+    expect(synced.cloudId).toBe('new-3');
+    expect(synced.cloudSyncedAt).toBe(synced.updatedAt);
+    const first = fake.rows.find((r) => r.id === 'new-3')!;
+    expect(first).toMatchObject({ title: 'Mine', artist: 'Unknown artist', format: 'atex' });
+    expect(first.file_path).toMatch(/^user-1\/[0-9a-f-]+\.atex$/);
+    expect(new TextDecoder().decode(fake.files[first.file_path])).toBe(TEX);
+
+    // An edit: same row, a new file, and the old file is gone.
+    const oldPath = first.file_path;
+    await lib.setTab(song.id, [new TextEncoder().encode(TEX.replace('Mine', 'Mine 2'))]);
+    await lib.update(song.id, { title: 'Mine 2' });
+    sync.schedule(song.id);
+    await sync.idle();
+    expect(fake.rows.filter((r) => r.title.startsWith('Mine'))).toHaveLength(1);
+    expect(first.title).toBe('Mine 2');
+    expect(first.file_path).not.toBe(oldPath);
+    expect(fake.files[oldPath]).toBeUndefined();
+    expect(new TextDecoder().decode(fake.files[first.file_path])).toContain('Mine 2');
+    expect(sync.status(song.id).state).toBe('synced');
+  });
+
+  it('makes the cloud copy again when it was deleted on the website', async () => {
+    const { c, lib, sync } = await setup();
+    await signIn(c);
+    const song = await lib.add({ title: 'Mine', written: true, tabText: TEX });
+    sync.schedule(song.id);
+    await sync.idle();
+    fake.rows = fake.rows.filter((r) => r.id !== lib.get(song.id)!.cloudId);
+    await lib.update(song.id, { title: 'Back' });
+    sync.schedule(song.id);
+    await sync.idle();
+    expect(fake.rows.find((r) => r.id === lib.get(song.id)!.cloudId)?.title).toBe('Back');
+  });
+
+  it('leaves other songs alone and does nothing while signed out', async () => {
+    const { c, lib, sync } = await setup();
+    const written = await lib.add({ title: 'Mine', written: true, tabText: TEX });
+    const imported = await lib.add({ title: 'Theirs', tabText: TEX });
+    sync.schedule(written.id);
+    await sync.idle();
+    expect(sync.status(written.id).state).toBe('off');
+    expect(fake.calls.filter((x) => x.includes('/storage/'))).toEqual([]);
+    // Signing in catches up on what was written meanwhile, and only that.
+    await signIn(c);
+    sync.syncAll();
+    await sync.idle();
+    expect(lib.get(written.id)!.cloudId).toBeTruthy();
+    expect(lib.get(imported.id)!.cloudId).toBeUndefined();
+    expect(fake.rows.map((r) => r.title)).toEqual(['Night Ride', 'Second', 'Mine']);
+  });
+
+  it('says so when the plan does not allow uploads, and cleans up', async () => {
+    const { c, lib, sync } = await setup();
+    await signIn(c);
+    fake.canWrite = false;
+    const song = await lib.add({ title: 'Mine', written: true, tabText: TEX });
+    sync.schedule(song.id);
+    await sync.idle();
+    expect(sync.status(song.id)).toEqual({ state: 'error', message: expect.stringMatching(/no active Fretlane Cloud plan/) });
+    expect(lib.get(song.id)!.cloudId).toBeUndefined();
+    expect(Object.keys(fake.files)).toEqual(['user-1/abc.txt']);
+  });
+
+  it('removes the uploaded file when the row cannot be written', async () => {
+    const { c, lib, sync } = await setup();
+    await signIn(c);
+    const song = await lib.add({ title: 'Mine', written: true, tabText: TEX });
+    const realFetch = fake.fetch;
+    fake.fetch = async (input, init) => (String(input).includes('/rest/v1/tabs') && init?.method === 'POST' ? new Response('{}', { status: 500 }) : realFetch(input, init));
+    const c2 = new FretlaneCloud(root, CONFIG, (i, o) => fake.fetch(i, o));
+    await c2.init();
+    const sync2 = new CloudSync(lib, c2, 5);
+    sync2.schedule(song.id);
+    // The first attempt fails (and is retried later); stop before the retry.
+    await new Promise((r) => setTimeout(r, 100));
+    expect(sync2.status(song.id).state).toBe('error');
+    sync2.close();
+    sync.close();
+    expect(Object.keys(fake.files)).toEqual(['user-1/abc.txt']);
+  });
+});
+

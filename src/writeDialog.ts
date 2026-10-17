@@ -127,7 +127,7 @@ export function openNewSongDialog(): void {
       h('div.instrument-row', {}, h('label.check', {}, gtrOn, 'Guitar'), gtrTuning.el, gtrSound),
       h('div.instrument-row', {}, h('label.check', {}, bassOn, 'Bass'), bassTuning.el, bassSound),
       h('div.instrument-row', {}, h('label.check', {}, drumsOn, 'Drums')),
-      h('small.hint', {}, 'You can add, retune or remove tracks later in the editor.'),
+      h('small.hint', {}, 'Ukulele, mandolin, banjo and extra tracks can be added in the editor with + Track.'),
     ),
     status,
     h('div.dialog-actions', {}, h('button', { type: 'button', onclick: () => dialog.close() }, 'Cancel'), submit),

@@ -44,6 +44,11 @@ export interface Song {
   cloudId?: string;
   /** Written in Fretlane's tab editor (Premium): the tab is alphaTex the editor can open again. */
   written?: boolean;
+  /**
+   * The `updatedAt` a written song had when it was last backed up to Fretlane Cloud (its
+   * `cloudId` is that backup). Different from `updatedAt` means there are changes to upload.
+   */
+  cloudSyncedAt?: string;
   createdAt: string;
   updatedAt: string;
 }

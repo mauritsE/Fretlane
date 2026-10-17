@@ -2,10 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import * as alphaTab from '@coderline/alphatab';
 import {
+  DEFAULT_SOUND,
   DRUM_TUNING,
   TUNING_PRESETS,
   barStatus,
   drumLane,
+  drumLaneAt,
+  drumStaffLine,
   laneName,
   barTicks,
   beatTicks,
@@ -436,11 +439,11 @@ describe('editor ⇄ alphaTab', () => {
 \track "Drums"
 \instrument percussion
 \staff {score}
-(36 42).4 38 (36 57) 38 |`;
+(36 42).4 38 (36 56) 38 |`;
     const { doc, dropped } = scoreToDoc(parse(tex));
     expect(doc.tracks.map((t) => `${t.name}:${t.kind}`)).toEqual(['Gtr:guitar', 'Drums:drums']);
     expect(dropped).toEqual(expect.arrayContaining(['grace notes', "drum sounds the editor's kit doesn't have"]));
-    // Hits are lanes of the editor's kit (1 = crash … 11 = kick); 57 (crash 2) isn't in it.
+    // Hits are lanes of the editor's kit (1 = crash … 11 = kick); 56 (cowbell) isn't in it.
     const lanes = doc.bars[0].tracks[1].map((b) => b.notes.map((n) => laneName(doc.tracks[1], n.string)).join('+'));
     expect(lanes).toEqual(['Hi-hat+Kick', 'Snare', 'Kick', 'Snare']);
   });
@@ -476,3 +479,61 @@ describe('editor ⇄ alphaTab', () => {
     }
   });
 });
+
+describe('more instruments', () => {
+  const lane = (midi: number) => DRUM_TUNING.indexOf(midi) + 1;
+
+  it('writes ukulele, mandolin and banjo tracks and recognises them again', () => {
+    const tracks: DocTrack[] = (['ukulele-standard', 'mandolin-standard', 'banjo-open-g'] as const).map((id) => {
+      const p = TUNING_PRESETS.find((x) => x.id === id)!;
+      return { name: p.kind, kind: p.kind, sound: DEFAULT_SOUND[p.kind], tuning: p.tuning };
+    });
+    let doc = song(tracks, 1);
+    // Open strings at the bottom of the tab: the ukulele's and the banjo's re-entrant high G.
+    doc = typeFret(doc, { track: 0, bar: 0, beat: 0, string: 4 }, 0, { duration: 1 }).doc;
+    doc = typeFret(doc, { track: 2, bar: 0, beat: 0, string: 5 }, 0, { duration: 1 }).doc;
+    const score = parse(docToTex(doc));
+    expect(score.tracks.map((t) => t.playbackInfo.program)).toEqual([24, 25, 105]);
+    expect(score.tracks[0].staves[0].bars[0].voices[0].beats[0].notes[0].realValue).toBe(67);
+    expect(score.tracks[2].staves[0].bars[0].voices[0].beats[0].notes[0].realValue).toBe(67);
+    const { doc: back, dropped } = scoreToDoc(score);
+    expect(dropped).toEqual([]);
+    expect(back.tracks.map((t) => t.kind)).toEqual(['ukulele', 'mandolin', 'banjo']);
+    expect(back).toEqual(doc);
+  });
+
+  it('parses custom tunings for the new instruments', () => {
+    expect(parseTuning('G C E A', 'ukulele')).toEqual([69, 64, 60, 55]);
+    expect(parseTuning('G4 C4 E4 A4', 'ukulele')).toEqual([69, 64, 60, 67]);
+    expect(parseTuning('G D A E', 'mandolin')).toEqual([76, 69, 62, 55]);
+  });
+
+  it('maps a click on the drum staff to the nearest drum', () => {
+    expect(DRUM_TUNING[drumLaneAt(3) - 1]).toBe(38);
+    expect(DRUM_TUNING[drumLaneAt(7.3) - 1]).toBe(36);
+    // Shared positions mean the everyday drum: hi-hat over open hi-hat, snare over side stick.
+    expect(DRUM_TUNING[drumLaneAt(-1) - 1]).toBe(42);
+    expect(DRUM_TUNING[drumLaneAt(3.2) - 1]).toBe(38);
+    expect(DRUM_TUNING[drumLaneAt(-5) - 1]).toBe(49);
+    expect(DRUM_TUNING[drumLaneAt(12) - 1]).toBe(44);
+    for (const midi of DRUM_TUNING.filter((m) => m !== 46 && m !== 37)) expect(DRUM_TUNING[drumLaneAt(drumStaffLine(midi)) - 1]).toBe(midi);
+  });
+
+  it('reads drums from other tabs onto the nearest drum of the kit', () => {
+    const tex = String.raw`\track "Drums"
+\instrument percussion
+\staff {score}
+(35 57).4 (40 53).4 (45 41).4 r.4 |`;
+    const { doc, dropped } = scoreToDoc(parse(tex));
+    expect(dropped).toEqual([]);
+    expect(doc.bars[0].tracks[0].slice(0, 3).map((b) => b.notes.map((n) => DRUM_TUNING[n.string - 1]).sort())).toEqual([[36, 49], [38, 51], [43, 47]]);
+  });
+
+  it('keeps a drum track a drum kit when its settings change', () => {
+    const drums: DocTrack = { name: 'Drums', kind: 'drums', sound: DEFAULT_SOUND.drums, tuning: [...DRUM_TUNING] };
+    const doc = song([GUITAR, drums], 1);
+    const e = updateTrack(doc, { ...START, track: 1, string: lane(36) }, 1, { name: 'Kit', tuning: [64, 59], sound: 'banjo' });
+    expect(e.doc.tracks[1]).toEqual({ ...drums, name: 'Kit' });
+  });
+});
+

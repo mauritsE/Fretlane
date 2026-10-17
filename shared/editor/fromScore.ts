@@ -4,7 +4,7 @@
  * and lists what it had to leave out.
  */
 import type * as alphaTab from '@coderline/alphatab';
-import { DEFAULT_SOUND, DRUM_TUNING, DURATIONS, clampTempo, type DocBar, type DocBeat, type DocNote, type DocTrack, type DurationValue, type SongDoc, type TrackKind } from './doc.ts';
+import { DEFAULT_SOUND, DRUM_TUNING, DURATIONS, TUNING_PRESETS, clampTempo, type DocBar, type DocBeat, type DocNote, type DocTrack, type DurationValue, type SongDoc, type TrackKind } from './doc.ts';
 
 /** General MIDI programs of the sounds the editor offers. */
 const PROGRAMS: Record<number, string> = {
@@ -18,7 +18,11 @@ const PROGRAMS: Record<number, string> = {
   33: 'electricbassfinger',
   34: 'electricbasspick',
   35: 'fretlessbass',
+  105: 'banjo',
 };
+
+/** Drums written elsewhere that the editor's kit plays as one of its own (GM number → kit number). */
+const DRUM_ALIASES: Record<number, number> = { 35: 36, 40: 38, 41: 43, 45: 47, 48: 50, 52: 49, 53: 51, 55: 49, 57: 49, 59: 51 };
 
 export interface ScoreToDocResult {
   doc: SongDoc;
@@ -47,7 +51,7 @@ export function scoreToDoc(score: alphaTab.model.Score): ScoreToDocResult {
       return { name: t.name, kind: 'drums', sound: DEFAULT_SOUND.drums, tuning: [...DRUM_TUNING] };
     }
     const program = t.playbackInfo.program;
-    const kind: TrackKind = (program >= 32 && program <= 39) || (staff.tuning.length <= 5 && Math.max(...staff.tuning) <= 45) ? 'bass' : 'guitar';
+    const kind = kindOf(program, staff.tuning);
     if (t.staves.length > 1) dropped.add('extra staves');
     if (staff.capo) dropped.add('capo');
     return { name: t.name, kind, sound: PROGRAMS[program] ?? DEFAULT_SOUND[kind], tuning: [...staff.tuning] };
@@ -74,6 +78,18 @@ export function scoreToDoc(score: alphaTab.model.Score): ScoreToDocResult {
     doc: { title: score.title || 'Untitled', artist: score.artist || '', tempo: clampTempo(score.tempo), tracks, bars },
     dropped: [...dropped],
   };
+}
+
+/**
+ * alphaTex doesn't say which instrument a stringed track is, so it is read from the sound and the
+ * tuning: a preset tuning names its instrument, else bass programs or low tunings are bass.
+ */
+function kindOf(program: number, tuning: number[]): TrackKind {
+  const preset = TUNING_PRESETS.find((p) => p.kind !== 'drums' && p.tuning.join() === tuning.join());
+  if (preset && (preset.kind !== 'guitar' || program < 32 || program > 39)) return preset.kind;
+  if (program === 105) return 'banjo';
+  if ((program >= 32 && program <= 39) || (tuning.length <= 5 && Math.max(...tuning) <= 45)) return 'bass';
+  return 'guitar';
 }
 
 function readVoice(bar: alphaTab.model.Bar | undefined, track: alphaTab.model.Track, dropped: Set<string>): DocBeat[] {
@@ -103,7 +119,7 @@ function readVoice(bar: alphaTab.model.Bar | undefined, track: alphaTab.model.Tr
       if (drums) {
         // A drum hit: its General MIDI number, through the track's articulation list.
         const midi = n.isPercussion ? track.percussionArticulations[n.percussionArticulation]?.outputMidiNumber ?? n.percussionArticulation : -1;
-        const lane = DRUM_TUNING.indexOf(midi) + 1;
+        const lane = DRUM_TUNING.indexOf(DRUM_ALIASES[midi] ?? midi) + 1;
         if (!lane) dropped.add('drum sounds the editor\'s kit doesn\'t have');
         else if (!out1.notes.some((x) => x.string === lane)) out1.notes.push({ string: lane, fret: 0 });
         continue;
