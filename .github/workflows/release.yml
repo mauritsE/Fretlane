@@ -55,7 +55,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      # Builds Apple-chip and Intel zips, each holding an ad-hoc signed Fretlane.app.
+      # Builds Apple-chip and Intel disk images (the installers on the website) and zips, each
+      # holding an ad-hoc signed Fretlane.app.
       - run: npm run dist:desktop -- --mac
       - name: Verify signatures and launch both apps
         run: |
@@ -72,10 +73,30 @@ jobs:
           else
             echo "::warning::Rosetta is not available on this runner; the Intel app was verified but not launched."
           fi
+      - name: Check the disk images and launch the app installed from one
+        run: |
+          set -euo pipefail
+          for arch in arm64 x64; do
+            dmg=$(ls release/out/Fretlane-*-mac-$arch.dmg)
+            hdiutil verify "$dmg"
+            mnt=$(mktemp -d)
+            hdiutil attach "$dmg" -nobrowse -readonly -mountpoint "$mnt"
+            # What the user sees: the app and a link to drag it onto.
+            ls -la "$mnt"
+            test -d "$mnt/Fretlane.app"
+            test -L "$mnt/Applications"
+            codesign --verify --deep --strict --verbose=2 "$mnt/Fretlane.app"
+            # "Drag to Applications": copy it out the way Finder does, then launch the copy.
+            rm -rf "installed-$arch" && mkdir "installed-$arch" && ditto "$mnt/Fretlane.app" "installed-$arch/Fretlane.app"
+            hdiutil detach "$mnt"
+          done
+          node release/smoke.mjs installed-arm64/Fretlane.app/Contents/MacOS/Fretlane
       - uses: actions/upload-artifact@v4
         with:
           name: app-macos
-          path: release/out/*-mac-*.zip
+          path: |
+            release/out/*-mac-*.zip
+            release/out/*-mac-*.dmg
 
   macos-intel:
     # Launches the Intel build natively on an Intel Mac. Diagnostic for now: it doesn't block
@@ -93,10 +114,13 @@ jobs:
         with:
           name: app-macos
           path: out
-      - name: Launch the Intel app natively
+      - name: Launch the Intel app natively, installed from its disk image
         run: |
           set -euo pipefail
-          ditto -x -k out/Fretlane-*-mac-x64.zip check-x64
+          mnt=$(mktemp -d)
+          hdiutil attach out/Fretlane-*-mac-x64.dmg -nobrowse -readonly -mountpoint "$mnt"
+          ditto "$mnt/Fretlane.app" check-x64/Fretlane.app
+          hdiutil detach "$mnt"
           codesign --verify --deep --strict check-x64/Fretlane.app
           node release/smoke.mjs check-x64/Fretlane.app/Contents/MacOS/Fretlane --timeout 180
 

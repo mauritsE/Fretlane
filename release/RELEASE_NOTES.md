@@ -5,9 +5,11 @@ Play along with guitar, bass and drum tabs, synced to YouTube videos or Spotify 
 | Your computer | Download | Then |
 | --- | --- | --- |
 | **Windows** 10 / 11 | `Fretlane-…-windows-setup.exe` | Double-click it. Fretlane installs and opens by itself, with a shortcut on your desktop and in the Start menu. |
-| **Mac** with Apple chip (M1, M2, M3, M4…) | `Fretlane-…-mac-arm64.zip` | Double-click the zip, then drag **Fretlane** into your **Applications** folder. |
-| **Mac** with Intel chip (older Macs) | `Fretlane-…-mac-x64.zip` | Same as above. |
+| **Mac** with Apple chip (M1, M2, M3, M4…) | `Fretlane-…-mac-arm64.dmg` | Double-click it, then drag **Fretlane** onto the **Applications** folder in the window that opens. |
+| **Mac** with Intel chip (older Macs) | `Fretlane-…-mac-x64.dmg` | Same as above. |
 | **Linux** | `Fretlane-…-linux-x86_64.AppImage` | Right-click → Properties → allow executing as a program, then double-click it. |
+
+The Mac `.zip` files hold the same app, for anyone who prefers them.
 
 Not sure which Mac you have? Apple menu → **About This Mac**. "Chip: Apple M…" means Apple chip. "Processor: Intel" means Intel.
 
