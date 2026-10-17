@@ -7,7 +7,8 @@
  * subscription), creating a song, typing a riff with the keyboard, the caret sitting on the typed
  * note, undo/redo, bars and copy/paste, autosave and reopening, playback from the cursor, adding a
  * track, the .gp export, "Edit a copy" of a demo song, and the API refusing writes once the plan
- * ends. It also measures re-render times on a 200-bar song (M0 in docs/premium/tab-editor-spec.md)
+ * ends, and the songwriting assistant (write a riff, improve the selection, undo) against a canned
+ * answer from the fake website. It also measures re-render times on a 200-bar song (M0 in docs/premium/tab-editor-spec.md)
  * and prints them. It does not prove the real website returns these rows; check that by hand.
  */
 import { chromium, type Page } from 'playwright';
@@ -35,6 +36,9 @@ function check(ok: boolean, what: string): void {
 
 // ---------- fake website + Supabase ----------
 let subscription: { status: string; current_period_end: string | null } | null = null;
+/** Requests the fake website's songwriting assistant received. */
+const riffRequests: { mode: string; prompt: string; bars: number; context: string }[] = [];
+const eighthsBar = (fret: number, count = 8) => ({ beats: Array.from({ length: count }, () => ({ duration: 8, dotted: false, triplet: false, notes: [{ string: 6, fret, techniques: [] }] })) });
 const access = new Set<string>();
 const refresh = new Set<string>();
 let n = 0;
@@ -73,6 +77,14 @@ const fake = http.createServer(async (req, res) => {
   if (url.pathname === '/rest/v1/subscriptions') return json(200, subscription ? [subscription] : []);
   if (url.pathname === '/rest/v1/rpc/my_kofi_membership' && req.method === 'POST') return json(200, null);
   if (url.pathname === '/rest/v1/tabs') return json(200, []);
+  if (url.pathname === '/api/public/app/riff-assistant' && req.method === 'POST') {
+    // Stands in for the website calling Claude: a canned riff, so the test is about the app.
+    const r = JSON.parse(body) as (typeof riffRequests)[number];
+    riffRequests.push(r);
+    if (subscription?.status !== 'active') return json(402, { error: 'The songwriting assistant comes with the Fretlane Cloud plan.' });
+    if (r.mode === 'generate') return json(200, { riff: { explanation: 'A funky two-bar riff on the low string.', bars: [eighthsBar(3, 9), eighthsBar(5)] } });
+    return json(200, { riff: { explanation: 'Moved it up to the seventh fret for a heavier sound.', bars: Array.from({ length: r.bars }, () => eighthsBar(7)) } });
+  }
   json(404, {});
 });
 await new Promise<void>((r) => fake.listen(0, '127.0.0.1', r));
@@ -254,6 +266,47 @@ if (stable(reopened) !== stable(before)) {
   if (JSON.stringify(headA) !== JSON.stringify(headB)) console.log('    head', JSON.stringify(headB), JSON.stringify(headA));
 }
 
+// ---------- songwriting assistant ----------
+// Nothing selected: the riff starts in the cursor bar (the last one, still empty) and adds a bar after it.
+await page.keyboard.press('Escape');
+for (let i = 0; i < 6; i++) await page.keyboard.press('Control+ArrowRight');
+check(/Write a new riff from bar 5/.test((await page.locator('.ai-mode').textContent()) ?? ''), 'riff assistant without a selection: offers to write a new riff from the cursor bar');
+await page.click('.ai-ideas .chip >> nth=1');
+check(/Funky/.test(await page.inputValue('.ai-prompt')), 'clicking an idea fills in the prompt');
+await page.fill('.ai-prompt', 'a funky riff 12');
+check((await ed()).doc.bars.length === 5 && stable((await ed()).doc) === stable(reopened), 'typing in the prompt box (digits too) does not edit the tab');
+await page.locator('.ai-prompt').evaluate((el) => (el as HTMLTextAreaElement).blur());
+await page.click('.ai-go');
+await page.waitForSelector('.ai-result button:has-text("Try again")', { timeout: 15000 });
+await rendered();
+s = await ed();
+const gen = riffRequests.at(-1)!;
+check(gen?.mode === 'generate' && gen.prompt === 'a funky riff 12' && gen.bars === 2 && gen.context.includes('Tempo: 96 BPM') && gen.context.includes('What comes just before the new riff'), 'the request carries the prompt, the bar count and the song context, through Fretlane Cloud');
+check(s.doc.bars.length === 6 && beats(s.doc, 4) === Array(8).fill('3.6:8').join(' ') && beats(s.doc, 5) === Array(8).fill('5.6:8').join(' '), `the new riff fills the empty bar 5 and adds bar 6; the overlong bar is trimmed (${beats(s.doc, 4)})`);
+const resultText = (await page.locator('.ai-result').textContent()) ?? '';
+check(resultText.includes('A funky two-bar riff') && resultText.includes('trimmed or filled with rests') && resultText.includes('bars 5–6'), 'the result shows the explanation, says what was fixed and where the riff went');
+check(/Bars 5–6 selected/.test((await page.locator('.edit-pos').textContent()) ?? '') && /Improve bars 5–6/.test((await page.locator('.ai-mode').textContent()) ?? ''), 'the new bars are selected, so the assistant now offers to improve them');
+await page.screenshot({ path: path.join(SHOTS, 'editor-5-assistant.png') });
+
+await page.fill('.ai-prompt', 'heavier');
+await page.locator('.ai-prompt').evaluate((el) => (el as HTMLTextAreaElement).blur());
+await page.click('.ai-go');
+await page.waitForFunction(() => /seventh fret/.test(document.querySelector('.ai-result')?.textContent ?? ''), undefined, { timeout: 15000 });
+await rendered();
+s = await ed();
+const imp = riffRequests.at(-1)!;
+check(imp.mode === 'improve' && imp.bars === 2 && imp.prompt === 'heavier' && imp.context.includes('The selected riff (bars 5–6)') && imp.context.includes('s6f5 1/8'), 'with bars selected the assistant sends them to be improved');
+check(s.doc.bars.length === 6 && beats(s.doc, 4) === Array(8).fill('7.6:8').join(' ') && beats(s.doc, 5) === Array(8).fill('7.6:8').join(' '), 'the improved riff replaces the selected bars');
+await page.click('.ai-result button:has-text("Undo")');
+await rendered();
+s = await ed();
+check(beats(s.doc, 4) === Array(8).fill('3.6:8').join(' ') && (await page.locator('.ai-result.hidden').count()) === 1, '↶ Undo in the result takes the improvement back');
+await page.keyboard.press('Control+z');
+await rendered();
+check(stable((await ed()).doc) === stable(reopened), 'Ctrl+Z takes the generated riff back too');
+await page.screenshot({ path: path.join(SHOTS, 'editor-5b-assistant-undone.png') });
+for (let i = 0; i < 6; i++) await page.keyboard.press('Control+ArrowLeft');
+
 // ---------- playback ----------
 await page.keyboard.press('Space');
 const played = await page
@@ -337,6 +390,8 @@ subscription = { status: 'canceled', current_period_end: new Date(Date.now() - 8
 await fetch(`${server.url}/api/premium`, { method: 'POST' });
 const refused = await fetch(`${server.url}/api/songs/${id}/tab`, { method: 'PUT', body: savedTex });
 check(refused.status === 402, 'without a plan the API refuses to save (402)');
+const aiRefused = await fetch(`${server.url}/api/assistant/riff`, { method: 'POST', body: JSON.stringify(gen) });
+check(aiRefused.status === 402, 'without a plan the API refuses the riff assistant too (402)');
 await page.goto(`${server.url}/#/write/${encodeURIComponent(id)}`);
 await page.waitForSelector('.premium-dialog');
 await page.click('.premium-dialog button:has-text("Not now")');

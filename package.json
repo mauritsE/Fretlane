@@ -28,6 +28,7 @@
     "node": ">=20"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.135.0",
     "@coderline/alphatab": "^1.8.4"
   },
   "devDependencies": {
