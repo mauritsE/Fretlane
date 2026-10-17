@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   cloudSyncPoints,
   cloudTabFields,
@@ -467,9 +467,8 @@ describe('backing written songs up to Fretlane Cloud', () => {
     await c2.init();
     const sync2 = new CloudSync(lib, c2, 5);
     sync2.schedule(song.id);
-    // The first attempt fails (and is retried later); stop before the retry.
-    await new Promise((r) => setTimeout(r, 100));
-    expect(sync2.status(song.id).state).toBe('error');
+    // The first attempt fails (and is retried 30 s later); stop before the retry.
+    await vi.waitFor(() => expect(sync2.status(song.id).state).toBe('error'), { timeout: 5000, interval: 20 });
     sync2.close();
     sync.close();
     expect(Object.keys(fake.files)).toEqual(['user-1/abc.txt']);
