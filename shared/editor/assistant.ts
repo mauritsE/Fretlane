@@ -37,19 +37,29 @@ import { clampCursor, normalizeRange, type BarRange, type Cursor, type Edit } fr
 
 export type RiffMode = 'improve' | 'generate';
 
-/** What the editor asks for. `context` is built by buildRiffRequest() and describes the song. */
+/**
+ * What the editor asks for. `song` is the whole song (every bar of every track, see songText()),
+ * sent first and cached by the API, so asking again about the same song reads it from the cache.
+ * `focus` says which bars to work on, with the music around them as tab.
+ */
 export interface RiffRequest {
   mode: RiffMode;
   /** The user's words: "make it heavier", "add a bass line and drums". May be empty for improve. */
   prompt: string;
   /** How many bars to write. For improve: the number of selected bars. */
   bars: number;
-  context: string;
+  song: string;
+  focus: string;
 }
 
 export const MAX_RIFF_BARS = 8;
 export const MAX_PROMPT_CHARS = 600;
-export const MAX_CONTEXT_CHARS = 24_000;
+/**
+ * The song text is capped at this many characters (about 60,000 tokens). A longer song is sent as
+ * the bars around the focus that fit, and says which bars it leaves out.
+ */
+export const MAX_SONG_CHARS = 200_000;
+export const MAX_FOCUS_CHARS = 24_000;
 /** Parts (tracks) one answer may write. */
 export const MAX_RIFF_PARTS = 4;
 /** The assistant doesn't add tracks beyond this many in a song. */
@@ -65,7 +75,8 @@ export function riffRequestProblem(req: unknown): string | null {
   if (typeof r.prompt !== 'string' || r.prompt.length > MAX_PROMPT_CHARS) return `Keep the prompt under ${MAX_PROMPT_CHARS} characters.`;
   if (r.mode === 'generate' && !r.prompt.trim()) return 'Describe the riff you want.';
   if (!Number.isInteger(r.bars) || r.bars! < 1 || r.bars! > MAX_RIFF_BARS) return `bars must be 1 to ${MAX_RIFF_BARS}.`;
-  if (typeof r.context !== 'string' || !r.context || r.context.length > MAX_CONTEXT_CHARS) return 'The selection is too long for the assistant. Select fewer bars.';
+  if (typeof r.song !== 'string' || !r.song || r.song.length > MAX_SONG_CHARS) return 'The song is too long for the assistant.';
+  if (typeof r.focus !== 'string' || !r.focus || r.focus.length > MAX_FOCUS_CHARS) return 'The selection is too long for the assistant. Select fewer bars.';
   return null;
 }
 
@@ -184,14 +195,26 @@ How to write:
 - When writing something new, follow the guitarist's description, and fit the key, feel and tempo of the music that comes before it if there is any.
 - The explanation is one or two plain sentences: what you wrote, or what you changed. No tab, no lists.`;
 
-/** The user turn sent to Claude. */
-export function riffUserMessage(req: RiffRequest): string {
+/** The question, after the song: where to work and what the guitarist asked. */
+export function riffAsk(req: RiffRequest): string {
   const bars = `exactly ${req.bars} bar${req.bars === 1 ? '' : 's'}`;
   const ask =
     req.mode === 'improve'
       ? `Improve the selected bars. Every part you write has ${bars}.\nWhat the guitarist asked: ${req.prompt.trim() || 'Make it better: more musical, more interesting to play, without losing its character.'}`
       : `Write something new of ${bars} per part.\nWhat the guitarist asked: ${req.prompt.trim()}`;
-  return `${req.context}\n\n${ask}`;
+  return `${req.focus}\n\n${ask}`;
+}
+
+/**
+ * The user turn sent to Claude: the song first, marked for prompt caching (it is the long, stable
+ * part: "Try again" and a second question about the same song read it from the cache), then the
+ * question.
+ */
+export function riffUserContent(req: RiffRequest): { type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }[] {
+  return [
+    { type: 'text', text: req.song, cache_control: { type: 'ephemeral' } },
+    { type: 'text', text: riffAsk(req) },
+  ];
 }
 
 // ---------- describing the song to Claude ----------
@@ -230,63 +253,137 @@ export function asciiTab(bars: DocBar[], track: number, strings: number, labels:
   return rows.join('\n');
 }
 
-/** One track's bars, as beat lists (and ASCII tab for guitar and bass). */
-function showTrack(doc: SongDoc, track: number, from: number, to: number): string[] {
+function labelsFor(t: DocTrack): string[] {
+  return t.tuning.map((p, i) => {
+    const name = pitchName(p).replace(/-?\d+$/, '');
+    return i === 0 && t.kind === 'guitar' ? name.toLowerCase() : name;
+  });
+}
+
+/** Bars from..to of one track as ASCII tab (guitar and bass), for the focus. */
+function tabText(doc: SongDoc, track: number, from: number, to: number): string[] {
   const t = doc.tracks[track];
-  const bars = doc.bars.slice(from, to + 1);
-  const lines = [`Track ${track + 1} "${t.name}":`];
-  bars.forEach((b, i) => lines.push(`Bar ${from + i + 1}${b.section ? ` [${b.section}]` : ''} (${b.ts[0]}/${b.ts[1]}): ${(b.tracks[track] ?? []).map((x) => beatText(x, t)).join(' | ')}`));
-  if (t.kind !== 'drums') {
-    const labels = t.tuning.map((p, i) => {
-      const name = pitchName(p).replace(/-?\d+$/, '');
-      return i === 0 && t.kind === 'guitar' ? name.toLowerCase() : name;
-    });
-    lines.push(asciiTab(bars, track, t.tuning.length, labels));
+  if (t.kind === 'drums') return [`Track ${track + 1} "${t.name}": ${barLines(doc, track, from, to).join('; ')}`];
+  return [`Track ${track + 1} "${t.name}", bars ${from + 1}–${to + 1}:`, asciiTab(doc.bars.slice(from, to + 1), track, t.tuning.length, labelsFor(t))];
+}
+
+/**
+ * One track's bars as beat lists, one line per bar. A bar that repeats the one before it, or is all
+ * rest, is shortened, and runs of them are merged ("Bars 6–8: same as bar 5"), which keeps long
+ * songs small.
+ */
+function barLines(doc: SongDoc, track: number, from: number, to: number): string[] {
+  const t = doc.tracks[track];
+  const out: string[] = [];
+  let run: { from: number; to: number; text: string } | null = null;
+  const flush = () => {
+    if (run) out.push(`${run.from === run.to ? `Bar ${run.from + 1}` : `Bars ${run.from + 1}–${run.to + 1}`}: ${run.text}`);
+    run = null;
+  };
+  let prev = '';
+  /** 1-based number of the bar a run of identical bars started with. */
+  let original = 0;
+  for (let i = from; i <= to; i++) {
+    const beats = doc.bars[i].tracks[track] ?? [];
+    const full = beats.map((x) => beatText(x, t)).join(' | ');
+    let text: string;
+    if (!beats.some((b) => b.notes.length)) text = 'rest';
+    else if (full === prev && original) text = `same as bar ${original}`;
+    else {
+      text = full;
+      original = i + 1;
+    }
+    if (text === 'rest') original = 0;
+    prev = full;
+    if (run && run.text === text && text !== full) run.to = i;
+    else {
+      flush();
+      run = { from: i, to: i, text };
+    }
   }
-  return lines;
+  flush();
+  return out;
+}
+
+/**
+ * The whole song as text: title, tempo, time signature, sections and changes, the tracks, then
+ * every bar of every track. When it is longer than MAX_SONG_CHARS, the bars nearest to `focusBar`
+ * that fit are kept and the text says which bars it leaves out.
+ */
+export function songText(doc: SongDoc, focusBar = 0): string {
+  const head = [`Song: "${doc.title}" by ${doc.artist}. ${doc.bars.length} bars. Tempo: ${doc.tempo} BPM. Time signature: ${doc.bars[0].ts[0]}/${doc.bars[0].ts[1]}.`];
+  const marks: string[] = [];
+  let ts = doc.bars[0].ts.join('/');
+  doc.bars.forEach((b, i) => {
+    const bits: string[] = [];
+    if (b.section) bits.push(`section "${b.section}"`);
+    if (b.ts.join('/') !== ts) bits.push(`time signature ${b.ts.join('/')}`);
+    ts = b.ts.join('/');
+    if (i > 0 && b.tempo) bits.push(`tempo ${b.tempo} BPM`);
+    if (b.repeatStart) bits.push('repeat starts');
+    if (b.repeatEnd) bits.push(`repeat ends (played ${b.repeatEnd}×)`);
+    if (bits.length) marks.push(`Bar ${i + 1}: ${bits.join(', ')}`);
+  });
+  if (marks.length) head.push('Structure:', ...marks);
+  head.push('', 'Tracks:', ...doc.tracks.map(trackText));
+  const body = (from: number, to: number) =>
+    doc.tracks.flatMap((t, i) => ['', `Track ${i + 1} "${t.name}" (${t.kind}), bar by bar:`, ...barLines(doc, i, from, to)]);
+  let from = 0;
+  let to = doc.bars.length - 1;
+  let text = [...head, ...body(from, to)].join('\n');
+  // Too long: halve the window around the focus until it fits.
+  while (text.length > MAX_SONG_CHARS && to > from) {
+    const half = Math.max(1, Math.floor((to - from) / 4));
+    from = Math.max(0, Math.min(focusBar - half, doc.bars.length - 1 - 2 * half));
+    to = Math.min(doc.bars.length - 1, from + 2 * half);
+    text = [...head, `Only bars ${from + 1}–${to + 1} are shown below; the song is too long to send whole.`, ...body(from, to)].join('\n');
+  }
+  return text;
 }
 
 /**
  * Builds the request for the bars selected (improve) or for something new at `at` (generate),
- * while the user is on `track`. The context lists every track, then shows the selected bars, or
- * the two bars with music just before the new riff, on every track that has notes there (and
- * always the user's own track).
+ * while the user is on `track`: the whole song, and a focus that names the bars and shows them (or
+ * the two bars with music just before the new part) as tab on every track that has notes there,
+ * and always on the user's own track.
  */
 export function buildRiffRequest(
   doc: SongDoc,
   track: number,
   opts: { mode: 'improve'; range: BarRange; prompt: string } | { mode: 'generate'; at: number; bars: number; prompt: string },
 ): RiffRequest {
-  const first = opts.mode === 'improve' ? normalizeRange(opts.range, doc).from : Math.min(Math.max(0, opts.at), doc.bars.length - 1);
-  const ts = doc.bars[first].ts;
-  const lines = [
-    `Song: "${doc.title}". Tempo: ${tempoAt(doc, first)} BPM. Time signature: ${ts[0]}/${ts[1]}.`,
-    '',
-    `Tracks (the guitarist is working on track ${track + 1}):`,
-    ...doc.tracks.map(trackText),
-  ];
-  const showRange = (title: string, from: number, to: number) => {
-    lines.push('', title);
+  const t = doc.tracks[track];
+  const lines: string[] = [];
+  const showRange = (from: number, to: number) =>
     doc.tracks.forEach((_, i) => {
-      if (i === track || doc.bars.slice(from, to + 1).some((b) => hasNotes(b, i))) lines.push('', ...showTrack(doc, i, from, to));
+      if (i === track || doc.bars.slice(from, to + 1).some((b) => hasNotes(b, i))) lines.push('', ...tabText(doc, i, from, to));
     });
-  };
   if (opts.mode === 'improve') {
     const r = normalizeRange(opts.range, doc);
-    showRange(`The selected bars (${r.from + 1}–${r.to + 1}):`, r.from, r.to);
-    return { mode: 'improve', prompt: opts.prompt, bars: r.to - r.from + 1, context: lines.join('\n') };
+    lines.push(`The guitarist is on track ${track + 1} "${t.name}" and selected bars ${r.from + 1}–${r.to + 1}:`);
+    showRange(r.from, r.to);
+    return { mode: 'improve', prompt: opts.prompt, bars: r.to - r.from + 1, song: songText(doc, r.from), focus: lines.join('\n') };
   }
-  // Up to two bars with music just before the new riff, so it can follow on from them.
-  let to = first - 1;
+  const at = Math.min(Math.max(0, opts.at), doc.bars.length);
+  lines.push(
+    at < doc.bars.length
+      ? `The guitarist is on track ${track + 1} "${t.name}". The new part starts at bar ${at + 1}: it fills bars that are still empty on the tracks you write, and is inserted before the first bar where one of them already plays.`
+      : `The guitarist is on track ${track + 1} "${t.name}". The new part is added after the last bar (bar ${doc.bars.length}).`,
+  );
+  // The two bars with music just before the new part, as tab, so it can follow on from them.
+  let to = at - 1;
   while (to >= 0 && !doc.tracks.some((_, i) => hasNotes(doc.bars[to], i))) to--;
-  if (to >= 0) showRange('What comes just before the new part:', Math.max(0, to - 1), to);
-  else lines.push('', 'Nothing has been written before the new part yet.');
-  return { mode: 'generate', prompt: opts.prompt, bars: Math.min(MAX_RIFF_BARS, Math.max(1, Math.round(opts.bars))), context: lines.join('\n') };
-}
-
-function tempoAt(doc: SongDoc, bar: number): number {
-  for (let i = bar; i > 0; i--) if (doc.bars[i].tempo) return doc.bars[i].tempo!;
-  return doc.tempo;
+  if (to >= 0) {
+    lines.push('', `Just before it (bars ${Math.max(0, to - 1) + 1}–${to + 1}):`);
+    showRange(Math.max(0, to - 1), to);
+  } else lines.push('Nothing has been written before it yet.');
+  return {
+    mode: 'generate',
+    prompt: opts.prompt,
+    bars: Math.min(MAX_RIFF_BARS, Math.max(1, Math.round(opts.bars))),
+    song: songText(doc, Math.min(at, doc.bars.length - 1)),
+    focus: lines.join('\n'),
+  };
 }
 
 function hasNotes(bar: DocBar | undefined, track: number): boolean {

@@ -10,7 +10,7 @@
  */
 import Anthropic from '@anthropic-ai/sdk';
 import { envVar } from '../shared/brand.ts';
-import { RIFF_SCHEMA, RIFF_SYSTEM_PROMPT, riffRequestProblem, riffUserMessage, type RiffRequest } from '../shared/editor/assistant.ts';
+import { RIFF_SCHEMA, RIFF_SYSTEM_PROMPT, riffRequestProblem, riffUserContent, type RiffRequest } from '../shared/editor/assistant.ts';
 import type { FretlaneCloud } from './cloud.ts';
 import { HttpError } from './library.ts';
 
@@ -62,7 +62,7 @@ export async function askClaude(client: Anthropic, req: RiffRequest): Promise<un
         betas: ['server-side-fallback-2026-07-01'],
         fallbacks: 'default',
         system: RIFF_SYSTEM_PROMPT,
-        messages: [{ role: 'user', content: riffUserMessage(req) }],
+        messages: [{ role: 'user', content: riffUserContent(req) }],
         output_config: { effort: 'medium', format: { type: 'json_schema', schema: RIFF_SCHEMA } },
       })
       .finalMessage();
@@ -72,6 +72,9 @@ export async function askClaude(client: Anthropic, req: RiffRequest): Promise<un
     if (err instanceof Anthropic.APIError) throw new HttpError(502, `The Claude API answered ${err.status ?? 'with an error'}: ${err.message}`);
     throw new HttpError(502, 'Could not reach the Claude API. Are you online?');
   }
+  // What the request cost, for pricing the assistant: tokens in (new, cache write, cache read) and out.
+  const u = message.usage;
+  console.info(`Riff assistant: ${req.mode}, ${req.bars} bar(s): ${u.input_tokens} in, ${u.cache_creation_input_tokens ?? 0} cache write, ${u.cache_read_input_tokens ?? 0} cache read, ${u.output_tokens} out`);
   if (message.stop_reason === 'refusal') throw new HttpError(422, 'The assistant declined this request. Try describing the riff differently.');
   if (message.stop_reason === 'max_tokens') throw new HttpError(502, 'The riff was cut off before it was finished. Ask for fewer bars.');
   const text = message.content.flatMap((b) => (b.type === 'text' ? [b.text] : [])).join('');

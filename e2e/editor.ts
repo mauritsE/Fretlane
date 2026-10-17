@@ -37,7 +37,7 @@ function check(ok: boolean, what: string): void {
 // ---------- fake website + Supabase ----------
 let subscription: { status: string; current_period_end: string | null } | null = null;
 /** Requests the fake website's songwriting assistant received. */
-const riffRequests: { mode: string; prompt: string; bars: number; context: string }[] = [];
+const riffRequests: { mode: string; prompt: string; bars: number; song: string; focus: string }[] = [];
 const eighthsBar = (fret: number, count = 8, string = 6) => ({ beats: Array.from({ length: count }, () => ({ duration: 8, dotted: false, triplet: false, notes: [{ string, fret, drum: 'none', techniques: [] }] })) });
 /** Kick + hi-hat, hi-hat, snare + hi-hat, hi-hat … in eighths. */
 const rockBar = () => ({
@@ -294,7 +294,7 @@ await page.waitForSelector('.ai-result button:has-text("Try again")', { timeout:
 await rendered();
 s = await ed();
 const gen = riffRequests.at(-1)!;
-check(gen?.mode === 'generate' && gen.prompt === 'a funky riff 12' && gen.bars === 2 && gen.context.includes('Tempo: 96 BPM') && gen.context.includes('What comes just before the new part'), 'the request carries the prompt, the bar count and the song context, through Fretlane Cloud');
+check(gen?.mode === 'generate' && gen.prompt === 'a funky riff 12' && gen.bars === 2 && gen.song.includes('Tempo: 96 BPM') && gen.song.includes('Track 1 "Guitar" (guitar), bar by bar:\nBar 1: ') && gen.focus.includes('Just before it'), 'the request carries the prompt, the bar count, the whole song and the focus, through Fretlane Cloud');
 check(s.doc.bars.length === 6 && beats(s.doc, 4) === Array(8).fill('3.6:8').join(' ') && beats(s.doc, 5) === Array(8).fill('5.6:8').join(' '), `the new riff fills the empty bar 5 and adds bar 6; the overlong bar is trimmed (${beats(s.doc, 4)})`);
 const resultText = (await page.locator('.ai-result').textContent()) ?? '';
 check(resultText.includes('A funky two-bar riff') && resultText.includes('trimmed or filled with rests') && resultText.includes('bars 5–6'), 'the result shows the explanation, says what was fixed and where the riff went');
@@ -308,7 +308,7 @@ await page.waitForFunction(() => /seventh fret/.test(document.querySelector('.ai
 await rendered();
 s = await ed();
 const imp = riffRequests.at(-1)!;
-check(imp.mode === 'improve' && imp.bars === 2 && imp.prompt === 'heavier' && imp.context.includes('The selected bars (5–6)') && imp.context.includes('s6f5 1/8'), 'with bars selected the assistant sends them to be improved');
+check(imp.mode === 'improve' && imp.bars === 2 && imp.prompt === 'heavier' && imp.focus.includes('selected bars 5–6') && imp.song.includes('Bar 6: s6f5 1/8'), 'with bars selected the assistant sends them to be improved');
 check(s.doc.bars.length === 6 && beats(s.doc, 4) === Array(8).fill('7.6:8').join(' ') && beats(s.doc, 5) === Array(8).fill('7.6:8').join(' '), 'the improved riff replaces the selected bars');
 await page.click('.ai-result button:has-text("Undo")');
 await rendered();

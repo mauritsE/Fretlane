@@ -15,7 +15,10 @@ import {
   describeWritten,
   riffFromAnswer,
   riffRequestProblem,
-  riffUserMessage,
+  riffAsk,
+  riffUserContent,
+  songText,
+  MAX_SONG_CHARS,
   type AiBeat,
   type AiPart,
   type AiRiff,
@@ -62,50 +65,87 @@ function parse(tex: string): alphaTab.model.Score {
 }
 
 describe('riff requests', () => {
-  it('lists every track and shows the selected bars on every track with notes', () => {
+  it('sends the whole song: structure, every track, every bar, with repeats and rests shortened', () => {
+    let doc = withNotes(song([GUITAR, BASS, DRUMS], 6), [1, 2]);
+    doc = typeFret(doc, { track: 2, bar: 1, beat: 0, string: drumLane('kick') }, 0, { duration: 4 }).doc;
+    doc = { ...doc, bars: doc.bars.map((b, i) => (i === 3 ? { ...b, tracks: [...doc.bars[2].tracks] } : i === 4 ? { ...b, section: 'Chorus', ts: [3, 4] as [number, number] } : b)) };
+    doc.bars[5] = { ...doc.bars[2], ts: [3, 4] };
+    const text = songText(doc);
+    expect(text).toContain('Song: "Riffs" by Me. 6 bars. Tempo: 140 BPM. Time signature: 4/4.');
+    expect(text).toContain('Structure:\nBar 5: section "Chorus", time signature 3/4');
+    expect(text).toContain('Track 1 "Guitar": guitar, 6 strings, sound "distortionguitar", tuning (highest string first): string 1 = E4');
+    expect(text).toContain('string 6 = D2');
+    expect(text).toContain('Track 2 "Bass": bass, 4 strings');
+    expect(text).toMatch(/Track 3 "Drums": drums \(crash, ride, .*kick\)/);
+    // Every bar of every track, empty ones too; repeats point at the bar they repeat.
+    expect(text).toContain('Track 1 "Guitar" (guitar), bar by bar:\nBar 1: rest\nBar 2: s6f2 1/4 | rest 1/2 dotted\nBar 3: s6f3 1/4 | rest 1/2 dotted\nBar 4: same as bar 3\nBar 5: rest\nBar 6: s6f3 1/4 | rest 1/2 dotted\n');
+    expect(text).toContain('Track 2 "Bass" (bass), bar by bar:\nBars 1–6: rest');
+    expect(text).toContain('Track 3 "Drums" (drums), bar by bar:\nBar 1: rest\nBar 2: kick 1/4');
+  });
+
+  it('merges a run of repeated bars into one line', () => {
+    let doc = withNotes(song([GUITAR], 6), [0]);
+    doc = { ...doc, bars: doc.bars.map((b, i) => (i > 0 && i < 4 ? { ...b, tracks: doc.bars[0].tracks } : b)) };
+    expect(songText(doc)).toContain('Bar 1: s6f1 1/4 | rest 1/2 dotted\nBars 2–4: same as bar 1\nBars 5–6: rest');
+  });
+
+  it('keeps a very long song to the bars around the focus, and says so', () => {
+    let doc = song([GUITAR], 1500);
+    doc = { ...doc, bars: doc.bars.map((b, i) => ({ ...b, tracks: [Array.from({ length: 16 }, (_, j) => ({ duration: 16 as const, notes: [{ string: 1 + ((i + j) % 6), fret: (i * 7 + j) % 13 }] }))] })) };
+    const text = songText(doc, 700);
+    expect(text.length).toBeLessThanOrEqual(MAX_SONG_CHARS);
+    const shown = /Only bars (\d+)–(\d+) are shown/.exec(text)!;
+    expect(Number(shown[1])).toBeLessThanOrEqual(701);
+    expect(Number(shown[2])).toBeGreaterThanOrEqual(701);
+    expect(text).toContain(`Bar ${shown[1]}:`);
+    expect(text).not.toContain('\nBar 1:');
+  });
+
+  it('focuses on the selected bars as tab on every track with notes there', () => {
     let doc = withNotes(song([GUITAR, BASS, DRUMS]), [1, 2]);
     doc = typeFret(doc, { track: 2, bar: 1, beat: 0, string: drumLane('kick') }, 0, { duration: 4 }).doc;
     const req = buildRiffRequest(doc, 0, { mode: 'improve', range: { from: 2, to: 1 }, prompt: ' heavier ' });
     expect(req.mode).toBe('improve');
     expect(req.bars).toBe(2);
-    expect(req.context).toContain('Tempo: 140 BPM. Time signature: 4/4.');
-    expect(req.context).toContain('Tracks (the guitarist is working on track 1):');
-    expect(req.context).toContain('Track 1 "Guitar": guitar, 6 strings');
-    expect(req.context).toContain('string 1 = E4');
-    expect(req.context).toContain('string 6 = D2');
-    expect(req.context).toContain('Track 2 "Bass": bass, 4 strings');
-    expect(req.context).toMatch(/Track 3 "Drums": drums \(crash, ride, .*kick\)/);
-    expect(req.context).toContain('The selected bars (2–3)');
-    expect(req.context).toContain('Bar 2 (4/4): s6f2 1/4');
-    expect(req.context).toContain('Bar 2 (4/4): kick 1/4');
-    // The empty bass track isn't shown; ASCII tab for the guitar, none for the drums.
-    expect(req.context).not.toContain('Track 2 "Bass":\n');
-    const tabLines = req.context.split('\n').filter((l) => /^[A-Ga-g]b?#? *\|/.test(l));
+    expect(req.song).toBe(songText(doc, 1));
+    expect(req.focus).toContain('The guitarist is on track 1 "Guitar" and selected bars 2–3:');
+    expect(req.focus).toContain('Track 1 "Guitar", bars 2–3:');
+    expect(req.focus).toContain('Track 3 "Drums": Bar 2: kick 1/4');
+    // The bass has nothing there, so it isn't in the focus.
+    expect(req.focus).not.toContain('Track 2 "Bass"');
+    const tabLines = req.focus.split('\n').filter((l) => /^[A-Ga-g]b?#? *\|/.test(l));
     expect(tabLines).toHaveLength(6);
     expect(tabLines[0].startsWith('e ')).toBe(true);
     expect(tabLines[5]).toMatch(/^D +\|-2.*\|-3/);
     expect(riffRequestProblem(req)).toBeNull();
-    expect(riffUserMessage(req)).toContain('Every part you write has exactly 2 bars.');
-    expect(riffUserMessage(req)).toContain('heavier');
+    expect(riffAsk(req)).toContain('Every part you write has exactly 2 bars.');
+    expect(riffAsk(req)).toContain('heavier');
+    // The song goes first and is cached; the question follows.
+    const content = riffUserContent(req);
+    expect(content).toEqual([
+      { type: 'text', text: req.song, cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: riffAsk(req) },
+    ]);
   });
 
-  it('shows what comes before a new riff, or says nothing has been written yet', () => {
+  it('for a new part, names where it goes and shows what comes just before it', () => {
     const empty = buildRiffRequest(song(), 0, { mode: 'generate', at: 0, bars: 4, prompt: 'a doom riff' });
-    expect(empty.context).toContain('Nothing has been written before the new part yet.');
+    expect(empty.focus).toContain('The new part starts at bar 1');
+    expect(empty.focus).toContain('Nothing has been written before it yet.');
     expect(empty.bars).toBe(4);
     const doc = withNotes(song([GUITAR, BASS], 6), [2, 3], 1);
     const req = buildRiffRequest(doc, 0, { mode: 'generate', at: 5, bars: 2, prompt: 'answer it' });
-    expect(req.context).toContain('What comes just before the new part:');
+    expect(req.focus).toContain('The new part starts at bar 6');
+    expect(req.focus).toContain('Just before it (bars 3–4):');
     // The bass has the notes; the guitar the user is on is shown too, even though it's empty.
-    expect(req.context).toContain('Track 2 "Bass":\nBar 3 (4/4)');
-    expect(req.context).toContain('Track 1 "Guitar":\nBar 3 (4/4)');
-    expect(req.context).toContain('Bar 4 (4/4)');
-    expect(req.context).not.toContain('Bar 2 (4/4)');
-    expect(riffUserMessage(req)).toContain('Write something new of exactly 2 bars per part.');
+    expect(req.focus).toContain('Track 2 "Bass", bars 3–4:');
+    expect(req.focus).toContain('Track 1 "Guitar", bars 3–4:');
+    expect(riffAsk(req)).toContain('Write something new of exactly 2 bars per part.');
+    expect(buildRiffRequest(doc, 0, { mode: 'generate', at: 6, bars: 1, prompt: 'x' }).focus).toContain('added after the last bar (bar 6)');
   });
 
   it('refuses requests that are malformed or too big', () => {
-    const ok: RiffRequest = { mode: 'generate', prompt: 'riff', bars: 2, context: 'Song' };
+    const ok: RiffRequest = { mode: 'generate', prompt: 'riff', bars: 2, song: 'Song', focus: 'Bar 1' };
     expect(riffRequestProblem(ok)).toBeNull();
     expect(riffRequestProblem(null)).toMatch(/Missing/);
     expect(riffRequestProblem({ ...ok, mode: 'solo' })).toMatch(/mode/);
@@ -114,7 +154,9 @@ describe('riff requests', () => {
     expect(riffRequestProblem({ ...ok, bars: MAX_RIFF_BARS + 1 })).toMatch(/bars/);
     expect(riffRequestProblem({ ...ok, bars: 1.5 })).toMatch(/bars/);
     expect(riffRequestProblem({ ...ok, prompt: 'x'.repeat(601) })).toMatch(/600/);
-    expect(riffRequestProblem({ ...ok, context: 'x'.repeat(24_001) })).toMatch(/fewer bars/);
+    expect(riffRequestProblem({ ...ok, focus: 'x'.repeat(24_001) })).toMatch(/fewer bars/);
+    expect(riffRequestProblem({ ...ok, song: 'x'.repeat(MAX_SONG_CHARS + 1) })).toMatch(/too long/);
+    expect(riffRequestProblem({ ...ok, song: '' })).toMatch(/too long/);
   });
 
   it('has a schema structured outputs accepts: every object closed and fully required', () => {
@@ -357,7 +399,7 @@ describe('applyRiff', () => {
 });
 
 describe('server: RiffAssistant', () => {
-  const req: RiffRequest = { mode: 'generate', prompt: 'a riff', bars: 1, context: 'Song: "x"' };
+  const req: RiffRequest = { mode: 'generate', prompt: 'a riff', bars: 1, song: 'Song: "x"', focus: 'Bar 1' };
   const reply: AiRiff = answer(part(1, 'guitar', [eighths([0, 0, 0, 0, 0, 0, 0, 0])]));
 
   function fakeClient(res: Partial<Anthropic.Beta.BetaMessage> | Error) {
@@ -368,7 +410,9 @@ describe('server: RiffAssistant', () => {
           // Like the SDK: stream() returns at once, finalMessage() resolves or throws.
           stream: (params: unknown) => {
             calls.push(params);
-            return { finalMessage: async () => (res instanceof Error ? Promise.reject(res) : res) };
+            // Real answers always carry usage; the server logs it.
+            const usage = { input_tokens: 100, output_tokens: 50, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 };
+            return { finalMessage: async () => (res instanceof Error ? Promise.reject(res) : { usage, ...res }) };
           },
         },
       },
@@ -385,7 +429,8 @@ describe('server: RiffAssistant', () => {
     expect(params.betas).toEqual(['server-side-fallback-2026-07-01']);
     expect(params.max_tokens).toBe(64000);
     expect(params.output_config.format).toEqual({ type: 'json_schema', schema: RIFF_SCHEMA });
-    expect(params.messages[0].content).toContain('Write something new of exactly 1 bar per part.');
+    expect(params.messages[0].content[0]).toEqual({ type: 'text', text: 'Song: "x"', cache_control: { type: 'ephemeral' } });
+    expect(params.messages[0].content[1].text).toContain('Write something new of exactly 1 bar per part.');
     expect(params.system).toContain('write exactly one part: the track they are working on');
   });
 
