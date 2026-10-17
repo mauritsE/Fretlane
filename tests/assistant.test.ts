@@ -404,7 +404,8 @@ describe('server: RiffAssistant', () => {
   const req: RiffRequest = { mode: 'generate', prompt: 'a riff', bars: 1, song: 'Song: "x"', focus: 'Bar 1' };
   const reply: AiRiff = answer(part(1, 'guitar', [eighths([0, 0, 0, 0, 0, 0, 0, 0])]));
 
-  function fakeClient(res: Partial<Anthropic.Beta.BetaMessage> | Error) {
+  /** A client that answers each call with the next of `answers` (the last one repeats). */
+  function fakeClient(...answers: (Partial<Anthropic.Beta.BetaMessage> | Error)[]) {
     const calls: unknown[] = [];
     const client = {
       beta: {
@@ -412,6 +413,7 @@ describe('server: RiffAssistant', () => {
           // Like the SDK: stream() returns at once, finalMessage() resolves or throws.
           stream: (params: unknown) => {
             calls.push(params);
+            const res = answers[Math.min(calls.length, answers.length) - 1];
             // Real answers always carry usage; the server logs it.
             const usage = { input_tokens: 100, output_tokens: 50, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 };
             return { finalMessage: async () => (res instanceof Error ? Promise.reject(res) : { usage, ...res }) };
@@ -424,7 +426,8 @@ describe('server: RiffAssistant', () => {
 
   it('calls Claude with the prompt, the schema and the fallback, and parses the JSON', async () => {
     const { client, calls } = fakeClient({ stop_reason: 'end_turn', content: [{ type: 'text', text: JSON.stringify(reply) } as Anthropic.Beta.BetaTextBlock] });
-    expect(await askClaude(client, req)).toEqual(reply);
+    expect(await askClaude(client, req)).toEqual({ riff: reply, corrected: false, tokens: { input: 100, cacheWrite: 0, cacheRead: 0, output: 50 } });
+    expect(calls).toHaveLength(1);
     const params = calls[0] as Record<string, any>;
     expect(params.model).toBe(RIFF_MODEL);
     expect(params.fallbacks).toBe('default');
@@ -441,6 +444,30 @@ describe('server: RiffAssistant', () => {
     await expect(askClaude(fakeClient({ stop_reason: 'max_tokens', content: [] }).client, req)).rejects.toThrow(/fewer bars/);
     await expect(askClaude(fakeClient({ stop_reason: 'end_turn', content: [{ type: 'text', text: '{"parts": [' } as Anthropic.Beta.BetaTextBlock] }).client, req)).rejects.toThrow(/not a riff/);
     await expect(askClaude(fakeClient(new TypeError('fetch failed')).client, req)).rejects.toThrow(/Could not reach/);
+  });
+
+  const text = (riff: unknown) => ({ stop_reason: 'end_turn' as const, content: [{ type: 'text', text: JSON.stringify(riff) } as Anthropic.Beta.BetaTextBlock] });
+  // A bar of six eighths where 4/4 needs eight.
+  const short: AiRiff = answer(part(1, 'guitar', [eighths([0, 0, 0, 0, 0, 0])]));
+  const checked: RiffRequest = { ...req, check: { key: null, barQuarters: [4], tracks: [{ kind: 'guitar', tuning: [64, 59, 55, 50, 45, 40] }] } };
+
+  it('sends the problems the checks find back once, and keeps the corrected answer', async () => {
+    const { client, calls } = fakeClient(text(short), text(reply));
+    const got = await askClaude(client, checked);
+    expect(got).toEqual({ riff: reply, corrected: true, tokens: { input: 200, cacheWrite: 0, cacheRead: 0, output: 100 } });
+    const second = (calls[1] as { messages: { role: string; content: unknown }[] }).messages;
+    expect(second.map((m) => m.role)).toEqual(['user', 'assistant', 'user']);
+    expect(second[1].content).toBe(JSON.stringify(short));
+    expect(second[2].content).toMatch(/Part 1, bar 1 adds up to 3 quarter notes; it needs exactly 4\./);
+    // The song and the question are the same turn as before, so the second call reads them from the cache.
+    expect(second[0]).toEqual((calls[0] as { messages: unknown[] }).messages[0]);
+  });
+
+  it('keeps the first answer when the correction is worse or fails', async () => {
+    const worse = answer(part(1, 'guitar', [eighths([0, 0, 0]), eighths([0])]));
+    expect((await askClaude(fakeClient(text(short), text(worse)).client, checked)).riff).toEqual(short);
+    const failed = await askClaude(fakeClient(text(short), new TypeError('fetch failed')).client, checked);
+    expect(failed).toMatchObject({ riff: short, corrected: false });
   });
 
   const usage = { plan: 'Fretlane Cloud', used: 40, allowance: 96, resetsOn: '2026-11-01T00:00:00.000Z' };
