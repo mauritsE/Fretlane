@@ -53,16 +53,19 @@ export class RiffAssistant {
 export async function askClaude(client: Anthropic, req: RiffRequest): Promise<unknown> {
   let message: Anthropic.Beta.BetaMessage;
   try {
-    message = await client.beta.messages.create({
-      model: RIFF_MODEL,
-      max_tokens: 16000,
-      // If the model declines for policy reasons, the API retries on its default fallback model.
-      betas: ['server-side-fallback-2026-07-01'],
-      fallbacks: 'default',
-      system: RIFF_SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: riffUserMessage(req) }],
-      output_config: { effort: 'medium', format: { type: 'json_schema', schema: RIFF_SCHEMA } },
-    });
+    // Streamed: four parts of eight bars can be a long answer, and a stream doesn't time out on it.
+    message = await client.beta.messages
+      .stream({
+        model: RIFF_MODEL,
+        max_tokens: 64000,
+        // If the model declines for policy reasons, the API retries on its default fallback model.
+        betas: ['server-side-fallback-2026-07-01'],
+        fallbacks: 'default',
+        system: RIFF_SYSTEM_PROMPT,
+        messages: [{ role: 'user', content: riffUserMessage(req) }],
+        output_config: { effort: 'medium', format: { type: 'json_schema', schema: RIFF_SCHEMA } },
+      })
+      .finalMessage();
   } catch (err) {
     if (err instanceof Anthropic.AuthenticationError) throw new HttpError(502, 'The Claude API rejected FRETLANE_ANTHROPIC_API_KEY. Check the key.');
     if (err instanceof Anthropic.RateLimitError) throw new HttpError(429, 'The Claude API is rate limiting this key. Try again in a minute.');

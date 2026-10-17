@@ -38,7 +38,12 @@ function check(ok: boolean, what: string): void {
 let subscription: { status: string; current_period_end: string | null } | null = null;
 /** Requests the fake website's songwriting assistant received. */
 const riffRequests: { mode: string; prompt: string; bars: number; context: string }[] = [];
-const eighthsBar = (fret: number, count = 8) => ({ beats: Array.from({ length: count }, () => ({ duration: 8, dotted: false, triplet: false, notes: [{ string: 6, fret, techniques: [] }] })) });
+const eighthsBar = (fret: number, count = 8, string = 6) => ({ beats: Array.from({ length: count }, () => ({ duration: 8, dotted: false, triplet: false, notes: [{ string, fret, drum: 'none', techniques: [] }] })) });
+/** Kick + hi-hat, hi-hat, snare + hi-hat, hi-hat … in eighths. */
+const rockBar = () => ({
+  beats: Array.from({ length: 8 }, (_, i) => ({ duration: 8, dotted: false, triplet: false, notes: (i % 4 === 0 ? ['kick', 'closedHiHat'] : i % 4 === 2 ? ['snare', 'closedHiHat'] : ['closedHiHat']).map((drum) => ({ string: 0, fret: 0, drum, techniques: [] })) })),
+});
+const guitarPart = (bars: unknown[]) => ({ track: 1, instrument: 'guitar', name: 'Guitar', bars });
 const access = new Set<string>();
 const refresh = new Set<string>();
 let n = 0;
@@ -82,8 +87,16 @@ const fake = http.createServer(async (req, res) => {
     const r = JSON.parse(body) as (typeof riffRequests)[number];
     riffRequests.push(r);
     if (subscription?.status !== 'active') return json(402, { error: 'The songwriting assistant comes with the Fretlane Cloud plan.' });
-    if (r.mode === 'generate') return json(200, { riff: { explanation: 'A funky two-bar riff on the low string.', bars: [eighthsBar(3, 9), eighthsBar(5)] } });
-    return json(200, { riff: { explanation: 'Moved it up to the seventh fret for a heavier sound.', bars: Array.from({ length: r.bars }, () => eighthsBar(7)) } });
+    if (/drums/.test(r.prompt)) {
+      return json(200, {
+        riff: {
+          explanation: 'A riff with a bass line and a rock beat under it.',
+          parts: [guitarPart([eighthsBar(0), eighthsBar(3)]), { track: 0, instrument: 'bass', name: 'Bass', bars: [eighthsBar(0, 8, 4), eighthsBar(3, 8, 4)] }, { track: 0, instrument: 'drums', name: 'Drums', bars: [rockBar(), rockBar()] }],
+        },
+      });
+    }
+    if (r.mode === 'generate') return json(200, { riff: { explanation: 'A funky two-bar riff on the low string.', parts: [guitarPart([eighthsBar(3, 9), eighthsBar(5)])] } });
+    return json(200, { riff: { explanation: 'Moved it up to the seventh fret for a heavier sound.', parts: [guitarPart(Array.from({ length: r.bars }, () => eighthsBar(7)))] } });
   }
   json(404, {});
 });
@@ -281,7 +294,7 @@ await page.waitForSelector('.ai-result button:has-text("Try again")', { timeout:
 await rendered();
 s = await ed();
 const gen = riffRequests.at(-1)!;
-check(gen?.mode === 'generate' && gen.prompt === 'a funky riff 12' && gen.bars === 2 && gen.context.includes('Tempo: 96 BPM') && gen.context.includes('What comes just before the new riff'), 'the request carries the prompt, the bar count and the song context, through Fretlane Cloud');
+check(gen?.mode === 'generate' && gen.prompt === 'a funky riff 12' && gen.bars === 2 && gen.context.includes('Tempo: 96 BPM') && gen.context.includes('What comes just before the new part'), 'the request carries the prompt, the bar count and the song context, through Fretlane Cloud');
 check(s.doc.bars.length === 6 && beats(s.doc, 4) === Array(8).fill('3.6:8').join(' ') && beats(s.doc, 5) === Array(8).fill('5.6:8').join(' '), `the new riff fills the empty bar 5 and adds bar 6; the overlong bar is trimmed (${beats(s.doc, 4)})`);
 const resultText = (await page.locator('.ai-result').textContent()) ?? '';
 check(resultText.includes('A funky two-bar riff') && resultText.includes('trimmed or filled with rests') && resultText.includes('bars 5–6'), 'the result shows the explanation, says what was fixed and where the riff went');
@@ -295,7 +308,7 @@ await page.waitForFunction(() => /seventh fret/.test(document.querySelector('.ai
 await rendered();
 s = await ed();
 const imp = riffRequests.at(-1)!;
-check(imp.mode === 'improve' && imp.bars === 2 && imp.prompt === 'heavier' && imp.context.includes('The selected riff (bars 5–6)') && imp.context.includes('s6f5 1/8'), 'with bars selected the assistant sends them to be improved');
+check(imp.mode === 'improve' && imp.bars === 2 && imp.prompt === 'heavier' && imp.context.includes('The selected bars (5–6)') && imp.context.includes('s6f5 1/8'), 'with bars selected the assistant sends them to be improved');
 check(s.doc.bars.length === 6 && beats(s.doc, 4) === Array(8).fill('7.6:8').join(' ') && beats(s.doc, 5) === Array(8).fill('7.6:8').join(' '), 'the improved riff replaces the selected bars');
 await page.click('.ai-result button:has-text("Undo")');
 await rendered();
@@ -305,6 +318,39 @@ await page.keyboard.press('Control+z');
 await rendered();
 check(stable((await ed()).doc) === stable(reopened), 'Ctrl+Z takes the generated riff back too');
 await page.screenshot({ path: path.join(SHOTS, 'editor-5b-assistant-undone.png') });
+
+// More parts: a riff with bass and drums gets two new tracks.
+await page.fill('.ai-prompt', 'a riff with bass and drums');
+await page.locator('.ai-prompt').evaluate((el) => (el as HTMLTextAreaElement).blur());
+await page.click('.ai-go');
+await page.waitForFunction(() => /rock beat/.test(document.querySelector('.ai-result')?.textContent ?? ''), undefined, { timeout: 15000 });
+await rendered();
+s = await ed();
+check(
+  s.doc.tracks.map((t) => `${t.name}:${t.kind}`).join(',') === 'Guitar:guitar,Bass:bass,Drums:drums' && beats(s.doc, 4, 1) === Array(8).fill('0.4:8').join(' '),
+  `asking for bass and drums adds a bass track and a drum track with their parts (${s.doc.tracks.map((t) => t.name).join(', ')})`,
+);
+check(/Guitar, Bass \(new track\) and Drums \(new track\), bars 5–6/.test((await page.locator('.ai-result').textContent()) ?? ''), 'the result says which tracks it wrote, and where');
+check((await page.locator('.sidebar .track-list li').count()) === 3 && /Drum kit/.test((await page.locator('.sidebar .track-list li >> nth=2').textContent()) ?? ''), 'the new tracks show in the sidebar');
+// The drum track shows as notation; the caret names the drum, and typing adds hits.
+await page.click('.sidebar .track-list li >> nth=2');
+await rendered();
+check((await page.locator('.editor-overlay .caret-label').textContent()) === 'Kick' && /Drum: Kick/.test((await page.locator('.edit-pos').textContent()) ?? ''), 'on the drum track the caret and the status bar name the drum (starts on the kick)');
+for (let i = 0; i < 4; i++) await page.keyboard.press('Control+ArrowLeft');
+for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowUp'); // kick → floor tom → side stick → snare
+await page.keyboard.press('1');
+await rendered();
+s = await ed();
+const drumHits = s.doc.bars[s.cursor.bar].tracks[2][0].notes.map((n) => n.string);
+check(s.cursor.track === 2 && drumHits.includes(8), `↑ picks the snare and a digit adds a hit on the drum track (lanes ${drumHits.join(',')})`);
+await page.screenshot({ path: path.join(SHOTS, 'editor-5c-drums.png') });
+await page.keyboard.press('Control+z');
+await page.keyboard.press('Control+z');
+await rendered();
+check(stable((await ed()).doc) === stable(reopened) && (await page.locator('.sidebar .track-list li').count()) === 1, 'Ctrl+Z takes the hit and then the whole three-part riff back, tracks included');
+await page.click('.sidebar .track-list li >> nth=0');
+await page.keyboard.press('Escape');
+await rendered();
 for (let i = 0; i < 6; i++) await page.keyboard.press('Control+ArrowLeft');
 
 // ---------- playback ----------

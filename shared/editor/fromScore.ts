@@ -4,7 +4,7 @@
  * and lists what it had to leave out.
  */
 import type * as alphaTab from '@coderline/alphatab';
-import { DEFAULT_SOUND, DURATIONS, clampTempo, type DocBar, type DocBeat, type DocNote, type DocTrack, type DurationValue, type SongDoc, type TrackKind } from './doc.ts';
+import { DEFAULT_SOUND, DRUM_TUNING, DURATIONS, clampTempo, type DocBar, type DocBeat, type DocNote, type DocTrack, type DurationValue, type SongDoc, type TrackKind } from './doc.ts';
 
 /** General MIDI programs of the sounds the editor offers. */
 const PROGRAMS: Record<number, string> = {
@@ -30,20 +30,22 @@ export function scoreToDoc(score: alphaTab.model.Score): ScoreToDocResult {
   const dropped = new Set<string>();
   const usable = score.tracks.filter((t) => {
     const staff = t.staves[0];
-    if (!staff || staff.isPercussion) {
-      dropped.add(`track "${t.name}" (drums)`);
-      return false;
-    }
+    if (!staff) return false;
+    if (staff.isPercussion) return true;
     if (!staff.tuning.length) {
       dropped.add(`track "${t.name}" (no tab staff)`);
       return false;
     }
     return true;
   });
-  if (!usable.length) throw new Error('This tab has no guitar or bass track the editor can open.');
+  if (!usable.length) throw new Error('This tab has no guitar, bass or drum track the editor can open.');
 
   const tracks: DocTrack[] = usable.map((t) => {
     const staff = t.staves[0];
+    if (staff.isPercussion) {
+      if (t.staves.length > 1) dropped.add('extra staves');
+      return { name: t.name, kind: 'drums', sound: DEFAULT_SOUND.drums, tuning: [...DRUM_TUNING] };
+    }
     const program = t.playbackInfo.program;
     const kind: TrackKind = (program >= 32 && program <= 39) || (staff.tuning.length <= 5 && Math.max(...staff.tuning) <= 45) ? 'bass' : 'guitar';
     if (t.staves.length > 1) dropped.add('extra staves');
@@ -55,7 +57,7 @@ export function scoreToDoc(score: alphaTab.model.Score): ScoreToDocResult {
   const bars: DocBar[] = score.masterBars.map((mb, i) => {
     const bar: DocBar = {
       ts: [mb.timeSignatureNumerator, mb.timeSignatureDenominator],
-      tracks: usable.map((t) => readVoice(t.staves[0].bars[i], t.staves[0].tuning.length, dropped)),
+      tracks: usable.map((t) => readVoice(t.staves[0].bars[i], t, dropped)),
     };
     if (mb.isRepeatStart) bar.repeatStart = true;
     if (mb.repeatCount > 1) bar.repeatEnd = mb.repeatCount;
@@ -74,8 +76,10 @@ export function scoreToDoc(score: alphaTab.model.Score): ScoreToDocResult {
   };
 }
 
-function readVoice(bar: alphaTab.model.Bar | undefined, stringCount: number, dropped: Set<string>): DocBeat[] {
+function readVoice(bar: alphaTab.model.Bar | undefined, track: alphaTab.model.Track, dropped: Set<string>): DocBeat[] {
   if (!bar) return [];
+  const stringCount = track.staves[0].tuning.length;
+  const drums = track.staves[0].isPercussion;
   if (bar.voices.slice(1).some((v) => !v.isEmpty)) dropped.add('second voices');
   const out: DocBeat[] = [];
   for (const beat of bar.voices[0]?.beats ?? []) {
@@ -96,6 +100,14 @@ function readVoice(bar: alphaTab.model.Bar | undefined, stringCount: number, dro
     if (beat.dots) out1.dotted = true;
     if (tuplet === '3:2') out1.triplet = true;
     for (const n of beat.notes) {
+      if (drums) {
+        // A drum hit: its General MIDI number, through the track's articulation list.
+        const midi = n.isPercussion ? track.percussionArticulations[n.percussionArticulation]?.outputMidiNumber ?? n.percussionArticulation : -1;
+        const lane = DRUM_TUNING.indexOf(midi) + 1;
+        if (!lane) dropped.add('drum sounds the editor\'s kit doesn\'t have');
+        else if (!out1.notes.some((x) => x.string === lane)) out1.notes.push({ string: lane, fret: 0 });
+        continue;
+      }
       if (!n.isStringed) continue;
       const note: DocNote = { string: stringCount - n.string + 1, fret: n.fret };
       if (n.isTieDestination) note.tie = true;

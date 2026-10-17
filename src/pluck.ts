@@ -72,3 +72,49 @@ export function pluck(pitches: number[], volume = 0.35): void {
     src.start(now);
   }
 }
+
+/** General MIDI numbers of the drums that are a pitched thump rather than noise (kick and toms). */
+const THUMPS: Record<number, number> = { 36: 55, 43: 90, 47: 120, 50: 160 };
+
+/**
+ * A short synthesized drum hit for a General MIDI percussion number, for hearing hits while typing
+ * on a drum track: a falling sine for the kick and toms, filtered noise for cymbals and hi-hats, and
+ * both for the snare.
+ */
+export function drumHit(midi: number, volume = 0.5): void {
+  const c = context();
+  if (!c) return;
+  const now = c.currentTime;
+  const out = c.createGain();
+  out.connect(c.destination);
+  const thump = THUMPS[midi];
+  if (thump || midi === 38 || midi === 37) {
+    const osc = c.createOscillator();
+    const g = c.createGain();
+    const f = thump ?? 190;
+    osc.frequency.setValueAtTime(f * 2.2, now);
+    osc.frequency.exponentialRampToValueAtTime(f, now + 0.06);
+    g.gain.setValueAtTime(volume, now);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + (midi === 36 ? 0.35 : 0.22));
+    osc.connect(g).connect(out);
+    osc.start(now);
+    osc.stop(now + 0.4);
+  }
+  if (!thump) {
+    const cymbal = midi === 49 || midi === 51 || midi === 46;
+    const seconds = cymbal ? 0.9 : midi === 42 || midi === 44 ? 0.08 : 0.18;
+    const buffer = c.createBuffer(1, Math.floor(c.sampleRate * seconds), c.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+    const src = c.createBufferSource();
+    src.buffer = buffer;
+    const filter = c.createBiquadFilter();
+    filter.type = 'highpass';
+    filter.frequency.value = midi === 38 || midi === 37 ? 1500 : 6000;
+    const g = c.createGain();
+    g.gain.setValueAtTime(volume * (midi === 37 ? 0.3 : 0.6), now);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + seconds);
+    src.connect(filter).connect(g).connect(out);
+    src.start(now);
+  }
+}

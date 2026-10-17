@@ -83,7 +83,7 @@ The riff assistant then works in one of two ways:
   (step 1). Don't put the key in a file inside the project folder: it could end up in a commit.
 
 To try it: open a song you wrote, select a bar or two with **Shift + → / ←**, and press
-**✨ Improve**. With nothing selected, type a description and press **✨ Write**.
+**✨ Improve**. With nothing selected, type a description and press **✨ Write**. Ask for "a riff with bass and drums" to get the other parts on their own tracks.
 
 ## 5. The desktop app
 

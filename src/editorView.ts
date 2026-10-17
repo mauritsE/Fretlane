@@ -6,6 +6,7 @@ import {
   TIME_SIGNATURES,
   barStatus,
   describeTicks,
+  laneName,
   pitchName,
   type DocBar,
   type DocTrack,
@@ -22,8 +23,8 @@ import {
   applyRiff,
   buildRiffRequest,
   riffRequestProblem,
-  riffTimeSignatures,
-  riffToBars,
+  describeWritten,
+  riffFromAnswer,
   type RiffRequest,
   type RiffTarget,
 } from '../shared/editor/assistant.ts';
@@ -31,7 +32,7 @@ import type { Cursor, Edit, Entry, NoteFlag } from '../shared/editor/commands.ts
 import { api } from './api.ts';
 import { h, toast } from './dom.ts';
 import { metronomeButton } from './metronome.ts';
-import { pluck } from './pluck.ts';
+import { drumHit, pluck } from './pluck.ts';
 import { ensurePremium } from './premiumView.ts';
 import { makeEditableCopy, soundSelect, tuningField } from './writeDialog.ts';
 
@@ -77,6 +78,7 @@ const SHORTCUTS: [string, string][] = [
   ['Delete / Backspace', 'Remove the note, then the beat'],
   ['Insert or I', 'Insert a beat before the cursor'],
   ['H S V B P L X T', 'Hammer/pull, slide, vibrato, bend, palm mute, let ring, dead note, tie'],
+  ['Drum track', '↑ ↓ pick the drum, any digit adds a hit, Delete removes it'],
   ['Ctrl + C / X / V', 'Copy / cut / paste bars (paste goes after the cursor bar)'],
   ['Ctrl + Delete', 'Delete the selected bars'],
   ['Ctrl + Z, Ctrl + Shift + Z', 'Undo, redo'],
@@ -85,10 +87,11 @@ const SHORTCUTS: [string, string][] = [
 ];
 
 /** Starting points for the riff assistant, filled into the prompt box with a click. */
-const IMPROVE_IDEAS = ['Make it heavier', 'More groove', 'Easier to play', 'Add a fill at the end', 'Make it sound more bluesy'];
+const IMPROVE_IDEAS = ['Make it heavier', 'More groove', 'Add a bass line and drums', 'Add a second guitar that harmonises', 'Add a fill at the end'];
 const GENERATE_IDEAS: Record<TrackKind, string[]> = {
-  guitar: ['Palm-muted chug, in the style of 2000s metal', 'Funky sixteenth-note riff in E minor', 'Bluesy shuffle in A', 'Slow, dark doom riff', 'Bright arpeggios, let ring'],
-  bass: ['Driving eighth-note bass line in E', 'Funky slap-style groove in A', 'Walking blues bass line in G', 'Simple root-fifth groove for a chorus'],
+  guitar: ['Palm-muted chug, in the style of 2000s metal', 'Funky sixteenth-note riff in E minor, with bass and drums', 'Bluesy shuffle in A', 'Slow, dark doom riff with drums', 'Two guitars: a riff and a harmony'],
+  bass: ['Driving eighth-note bass line in E', 'Funky groove in A, with drums', 'Walking blues bass line in G', 'Simple root-fifth groove for a chorus'],
+  drums: ['Straight rock beat', 'Half-time groove with ghost notes', 'Driving punk beat', 'Shuffle feel on the ride'],
 };
 
 function parseTex(tex: string): alphaTab.model.Score {
@@ -361,6 +364,12 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
     current = parseTex(docToTex(doc));
     const sameTrack = renderedTrack === cursor.track;
     renderedTrack = cursor.track;
+    // Drums have no tab staff: show them as notation (a lone drum track has nothing to draw as tab).
+    const profile = doc.tracks[cursor.track].kind === 'drums' ? alphaTab.StaveProfile.Score : alphaTab.StaveProfile.Tab;
+    if (at.settings.display.staveProfile !== profile) {
+      at.settings.display.staveProfile = profile;
+      at.updateSettings();
+    }
     const hints: NonNullable<Parameters<typeof at.renderScore>[2]> = { reuseViewport: true };
     if (sameTrack && changedBar > 0) hints.firstChangedMasterBar = changedBar;
     at.renderScore(current, [cursor.track], hints);
@@ -412,7 +421,8 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
     if (at.playerState === alphaTab.synth.PlayerState.Playing) return;
     const track = doc.tracks[cursor.track];
     const note = beatAtCursor()?.notes.find((n) => n.string === cursor.string);
-    if (note && !note.dead) pluck([track.tuning[note.string - 1] + note.fret]);
+    if (note && track.kind === 'drums') drumHit(track.tuning[note.string - 1]);
+    else if (note && !note.dead) pluck([track.tuning[note.string - 1] + note.fret]);
   }
 
   // ---------- saving ----------
@@ -481,7 +491,7 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
     for (const btn of flagBtns) {
       const flag = btn.dataset.flag as NoteFlag;
       btn.classList.toggle('active', !!note?.[flag]);
-      btn.disabled = !note;
+      btn.disabled = !note || doc.tracks[cursor.track].kind === 'drums';
     }
     const bar = doc.bars[cursor.bar];
     tsSel.value = bar.ts.join('/');
@@ -499,11 +509,11 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
   }
 
   function drawStatus(): void {
-    const tuning = doc.tracks[cursor.track].tuning;
+    const track = doc.tracks[cursor.track];
     const beats = doc.bars[cursor.bar].tracks[cursor.track].length;
     const r = selection();
     posEl.textContent =
-      `Bar ${cursor.bar + 1}/${doc.bars.length} · Beat ${cursor.beat + 1}/${beats} · String ${cursor.string} (${pitchName(tuning[cursor.string - 1])})` +
+      `Bar ${cursor.bar + 1}/${doc.bars.length} · Beat ${cursor.beat + 1}/${beats} · ${track.kind === 'drums' ? `Drum: ${laneName(track, cursor.string)}` : `String ${cursor.string} (${laneName(track, cursor.string)})`}` +
       (r.from !== r.to ? ` · Bars ${r.from + 1}–${r.to + 1} selected` : '');
     const st = barStatus(doc, cursor.track, cursor.bar);
     warnEl.textContent = st.diff ? `⚠ Bar ${cursor.bar + 1} is ${describeTicks(st.diff)} ${st.diff < 0 ? 'short' : 'too long'}` : '';
@@ -524,7 +534,7 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
             },
           },
           h('span.track-name', {}, t.name),
-          h('small', {}, `${t.kind === 'bass' ? 'Bass' : 'Guitar'} · ${[...t.tuning].reverse().map((p) => pitchName(p).replace(/-?\d+$/, '')).join(' ')}`),
+          h('small', {}, t.kind === 'drums' ? 'Drum kit' : `${t.kind === 'bass' ? 'Bass' : 'Guitar'} · ${[...t.tuning].reverse().map((p) => pitchName(p).replace(/-?\d+$/, '')).join(' ')}`),
           h(
             'span.track-buttons',
             {},
@@ -587,14 +597,22 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
     const bb = barBounds(cursor.bar);
     const beat = bb?.beats.find((b) => b.beat.voice.index === 0 && b.beat.index === cursor.beat);
     if (bb && beat) {
-      const lineH = bb.visualBounds.h / Math.max(1, doc.tracks[cursor.track].tuning.length - 1);
+      const lines = doc.tracks[cursor.track].kind === 'drums' ? 5 : doc.tracks[cursor.track].tuning.length;
+      const lineH = bb.visualBounds.h / Math.max(1, lines - 1);
       const size = Math.max(14, lineH * 0.95);
       const x = beat.onNotesX || beat.visualBounds.x + beat.visualBounds.w / 2;
       marks.push(box('beat-col', x - size / 2 - 3, bb.visualBounds.y - lineH / 2, size + 6, bb.visualBounds.h + lineH));
-      const y = stringY(bb, cursor.string);
-      const caret = box('caret', x - size / 2, y - size / 2, size, size);
-      marks.push(caret);
-      revealInViewport(y);
+      if (doc.tracks[cursor.track].kind === 'drums') {
+        // A drum staff has no line per drum: name the drum above the beat instead.
+        const label = box('caret-label', x - 40, bb.visualBounds.y - 22, 80, 16);
+        label.append(h('span', {}, laneName(doc.tracks[cursor.track], cursor.string)));
+        marks.push(label);
+        revealInViewport(bb.visualBounds.y);
+      } else {
+        const y = stringY(bb, cursor.string);
+        marks.push(box('caret', x - size / 2, y - size / 2, size, size));
+        revealInViewport(y);
+      }
     }
     overlay.replaceChildren(...marks);
   }
@@ -623,7 +641,7 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
     const bar = beat.voice.bar.index;
     const bb = barBounds(bar);
     let string = cursor.string;
-    if (bb) {
+    if (bb && doc.tracks[cursor.track].kind !== 'drums') {
       const strings = doc.tracks[cursor.track].tuning.length;
       const step = bb.visualBounds.h / Math.max(1, strings - 1);
       string = Math.round((y - bb.visualBounds.y) / step) + 1;
@@ -861,7 +879,7 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
     const existing = index === null ? null : doc.tracks[index];
     let kind: TrackKind = existing?.kind ?? 'guitar';
     const name = h('input', { value: existing?.name ?? '', placeholder: 'Guitar 2' });
-    const kindSel = h('select', { disabled: !!existing }, h('option', { value: 'guitar', selected: kind === 'guitar' }, 'Guitar'), h('option', { value: 'bass', selected: kind === 'bass' }, 'Bass'));
+    const kindSel = h('select', { disabled: !!existing }, h('option', { value: 'guitar', selected: kind === 'guitar' }, 'Guitar'), h('option', { value: 'bass', selected: kind === 'bass' }, 'Bass'), h('option', { value: 'drums', selected: kind === 'drums' }, 'Drums'));
     let tuning = tuningField(kind, existing?.tuning);
     let sound = soundSelect(kind, existing?.sound);
     const tuningHost = h('label', {}, 'Tuning', tuning.el);
@@ -899,7 +917,7 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
           renderedTrack = -1;
           apply(cmd.updateTrack(doc, cursor, index, { name: name.value, sound: sound.value, tuning: t }));
         } else {
-          const track: DocTrack = { name: name.value.trim() || (kind === 'bass' ? 'Bass' : `Guitar ${doc.tracks.filter((x) => x.kind === 'guitar').length + 1}`), kind, sound: sound.value, tuning: t };
+          const track: DocTrack = { name: name.value.trim() || (kind === 'bass' ? 'Bass' : kind === 'drums' ? 'Drums' : `Guitar ${doc.tracks.filter((x) => x.kind === 'guitar').length + 1}`), kind, sound: sound.value, tuning: t };
           apply(cmd.addTrack(doc, cursor, track));
         }
         return true;
@@ -946,7 +964,7 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
   // is a normal edit, so Ctrl+Z takes it back.
   let aiBusy: AbortController | null = null;
   /** The last riff put in the song, for "Try again" and "Undo". `doc` is the document right after it. */
-  let lastAi: { request: RiffRequest; target: RiffTarget; track: number; doc: SongDoc } | null = null;
+  let lastAi: { request: RiffRequest; target: RiffTarget; cursor: Cursor; doc: SongDoc } | null = null;
   let aiShownMode = '';
 
   /** Where a new riff goes: the cursor bar if it's still empty on this track, else the bar after it. */
@@ -961,8 +979,8 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
     const count = r.to - r.from + 1;
     const mode = improving ? 'improve' : 'generate';
     aiMode.textContent = improving
-      ? `Improve bar${count === 1 ? '' : 's'} ${r.from + 1}${count === 1 ? '' : `–${r.to + 1}`} of ${doc.tracks[cursor.track].name}.`
-      : `Write a new riff from bar ${generateAt() + 1}. Select bars (Shift + ← →) to improve them instead.`;
+      ? `Improve bar${count === 1 ? '' : 's'} ${r.from + 1}${count === 1 ? '' : `–${r.to + 1}`} of ${doc.tracks[cursor.track].name}, or ask for other parts to go with them.`
+      : `Write a new riff from bar ${generateAt() + 1}. Ask for a bass line, drums or a second guitar too. Select bars (Shift + ← →) to improve them instead.`;
     aiBarsLabel.classList.toggle('hidden', improving);
     aiGo.textContent = aiBusy ? '■ Stop' : improving ? '✨ Improve' : '✨ Write';
     aiGo.disabled = !aiBusy && improving && count > MAX_RIFF_BARS;
@@ -988,13 +1006,14 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
     }
     let request: RiffRequest;
     let target: RiffTarget;
-    let track: number;
+    let from: Cursor;
     if (again && lastAi) {
       // Take the previous attempt out first, so the new one starts from the same song.
       if (doc === lastAi.doc) restore(history.undo({ doc, cursor }));
-      ({ request, target, track } = lastAi);
+      ({ request, target, cursor: from } = lastAi);
     } else {
-      track = cursor.track;
+      from = cursor;
+      const track = cursor.track;
       const prompt = aiPrompt.value.trim();
       if (selectAnchor !== null) {
         const range = selection();
@@ -1018,20 +1037,20 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
     showAiResult(h('p.ai-thinking', {}, h('span.spinner.small'), request.mode === 'improve' ? 'Reworking your riff…' : 'Writing a riff…'));
     try {
       const { riff } = await api.riffAssistant(request, controller.signal);
-      const ts = riffTimeSignatures(doc, track, target, MAX_RIFF_BARS);
-      const result = riffToBars(riff, doc.tracks[track].tuning.length, (i) => ts[i]);
-      const e = applyRiff(doc, cursor, track, target, result.bars);
-      if (track !== cursor.track) renderedTrack = -1;
+      const result = riffFromAnswer(riff, doc, target);
+      const e = applyRiff(doc, from, target, result);
+      if (e.doc.tracks.length !== doc.tracks.length || e.cursor.track !== cursor.track) renderedTrack = -1;
       apply(e);
       // Select the new bars: "Improve" works on them next, and the loop plays them.
       selectAnchor = e.range.to;
-      lastAi = { request, target, track, doc };
+      lastAi = { request, target, cursor: from, doc };
       afterChange(-1);
       const where = e.range.from === e.range.to ? `bar ${e.range.from + 1}` : `bars ${e.range.from + 1}–${e.range.to + 1}`;
+      const parts = e.written.length > 1 || e.written.some((w) => w.added) ? `${describeWritten(e.written, doc)}, ` : '';
       showAiResult(
         h('p', {}, result.explanation || (request.mode === 'improve' ? 'Here is a reworked version.' : 'Here is a new riff.')),
         ...result.fixes.map((f) => h('p.hint', {}, f)),
-        h('p.hint', {}, `Now in ${where}. Ctrl+Z takes it back.`),
+        h('p.hint', {}, `Now in ${parts}${where}. Ctrl+Z takes it back.`),
         h(
           'div.ai-row',
           {},

@@ -385,6 +385,8 @@ button.song-heading.link:hover { border-color: var(--line); }
 .editor-overlay { position: absolute; inset: 0; pointer-events: none; }
 .editor-overlay > div { position: absolute; }
 .editor-overlay .caret { border: 2px solid #d4410b; border-radius: 4px; background: rgb(212 65 11 / 0.12); }
+.editor-overlay .caret-label { display: flex; justify-content: center; align-items: flex-end; }
+.editor-overlay .caret-label span { background: #d4410b; color: #fff; font-size: 11px; font-weight: 600; padding: 0 5px; border-radius: 3px; white-space: nowrap; }
 .editor-overlay .beat-col { background: rgb(245 176 65 / 0.16); border-radius: 4px; }
 .editor-overlay .sel { background: rgb(64 132 255 / 0.12); border: 1px solid rgb(64 132 255 / 0.4); border-radius: 4px; }
 .editor-overlay .bar-warn { display: flex; justify-content: flex-end; color: #b3261e; font: 600 11px/16px system-ui, sans-serif; white-space: nowrap; }
