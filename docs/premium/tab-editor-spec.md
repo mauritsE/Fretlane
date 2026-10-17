@@ -105,10 +105,11 @@ validation and the save path. M0 measured the re-render cost; see
 - Cloud sync (*built*: a backup of each written song, see the notes) and version history for written songs.
 - Edit imported tabs (see the open questions on round-trip fidelity).
 - A second voice per staff.
-- Drum track entry (*built*, with ukulele, mandolin and banjo tracks).
+- Drum track entry. (*Built*: drum tracks with a fixed kit, typed with ↑ ↓ and Enter or a digit; no drum techniques yet. Ukulele, mandolin and banjo tracks too.)
 - Lyrics under the tab.
 - **Riff assistant** (*built*, after v1): select bars and ask Claude to improve them, or describe a
-  riff and have Claude write it at the cursor. See `shared/editor/assistant.ts`.
+  riff and have Claude write it at the cursor; on request it also writes a second guitar, a bass line
+  and drums, each on its own track. See `shared/editor/assistant.ts`.
 - Record a riff, then turn it into notes. This needs pitch detection on the user's own audio
   and is the most distinctive item here; it needs a separate spike.
 
@@ -259,18 +260,16 @@ ring, dead note, tie) and section names. Also time signature and tempo changes p
 string tunings (presets plus custom), several guitar/bass tracks, and "✎ Make my version" for
 tabs not written in Fretlane. Not built: second voices, lyrics, recording a riff into notes.
 
-**Added after v1: more instruments.** A track is a guitar, bass, drum kit, ukulele, mandolin or
-banjo (`TrackKind`, `INSTRUMENTS`). The string instruments are ordinary tab tracks with their
-own tuning presets (re-entrant ukulele and 5-string banjo included) and the closest General MIDI
-sound (GM has no ukulele or mandolin). alphaTex doesn't record the instrument, so `fromScore.ts`
-reads it back from the tuning preset and the MIDI program. A drum track's "strings" are the lanes
-of `DRUM_LANES` (crash, hi-hats, ride, toms, snare, kick, hi-hat pedal; `tuning` holds their GM
-numbers), so the cursor, durations, rests, chords and bar filling work unchanged; a hit is a note
-with fret 0, techniques are refused, and it is written as a drum staff (`(36 42).8`, always in
-brackets, because `42.8` would read as fret 42 on string 8). The editor shows the drum staff
-instead of tab on that track and places the caret from each drum's staff position (read from
-alphaTab's articulations; checked against note heads in `e2e/editor.ts`). Typed hits sound
-through a small synthesized kit in `src/pluck.ts`. The riff assistant is off on drum tracks.
+**Added after v1: more instruments.** Besides guitar, bass and drums (the drum kit is described in
+`CLAUDE.md` and `doc.ts#DRUM_KIT`), a track can be a ukulele, mandolin or banjo (`INSTRUMENTS`).
+They are ordinary tab tracks with their own tuning presets (re-entrant ukulele and 5-string banjo
+included) and the closest General MIDI sound (GM has no ukulele or mandolin). alphaTex doesn't
+record the instrument, so `fromScore.ts` reads it back from the tuning preset and the MIDI program.
+On a drum track the caret sits where the drum's note head goes (`drumStaffLine`, read from
+alphaTab's articulations and checked against note heads in `e2e/editor.ts`), a click picks the
+nearest drum, and drums from other tabs map onto the nearest drum of the kit (a second crash plays
+on the crash). The riff assistant writes guitar, bass and drum parts; on a ukulele, mandolin or
+banjo track it writes the part on a new guitar track instead.
 
 **Added after v1: Fretlane Cloud backup.** `server/cloudSync.ts` uploads a written song a few
 seconds after it changes (editor autosave, title, recording), while signed in; changes made signed

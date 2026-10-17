@@ -12,9 +12,7 @@ import {
   beatTicks,
   clampTempo,
   emptyBar,
-  isDrums,
   restsFor,
-  startString,
   voiceTicks,
   type DocBar,
   type DocBeat,
@@ -189,13 +187,11 @@ export function moveBar(doc: SongDoc, c: Cursor, dir: 1 | -1): Edit {
 
 // ---------- notes ----------
 
-/**
- * Puts a fret on the cursor string. A rest becomes a note of the toolbar's duration. On a drum
- * track the "string" is a drum and any fret is just a hit on it.
- */
+/** Puts a fret on the cursor string. A rest becomes a note of the toolbar's duration. */
 export function typeFret(doc: SongDoc, c: Cursor, fret: number, entry: Entry): Edit {
   if (!Number.isInteger(fret) || fret < 0 || fret > MAX_FRET) return same(doc, c, `Frets go from 0 to ${MAX_FRET}.`);
-  if (isDrums(doc.tracks[c.track])) fret = 0;
+  // On drums any digit is a hit on the cursor's drum; there are no frets.
+  if (doc.tracks[c.track]?.kind === 'drums') fret = 0;
   const beats = voice(doc, c);
   const beat = beats[c.beat];
   if (!beat) return same(doc, c);
@@ -304,10 +300,10 @@ export const NOTE_FLAG_LABELS: Record<NoteFlag, string> = {
 
 /** Switches a technique on or off for the note under the cursor. */
 export function toggleNoteFlag(doc: SongDoc, c: Cursor, flag: NoteFlag): Edit {
+  if (doc.tracks[c.track]?.kind === 'drums') return same(doc, c, 'Techniques are for guitar and bass.');
   const beats = voice(doc, c).slice();
   const beat = beats[c.beat];
   const note = beat?.notes.find((n) => n.string === c.string);
-  if (isDrums(doc.tracks[c.track])) return same(doc, c, 'Drum hits have no techniques.');
   if (!beat || !note) return same(doc, c, 'Put a note on this string first.');
   const on = !note[flag];
   const changed: DocNote = { ...note, [flag]: on || undefined };
@@ -449,7 +445,7 @@ export function addTrack(doc: SongDoc, c: Cursor, track: DocTrack): Edit {
     tracks: [...doc.tracks, { ...track, tuning: [...track.tuning] }],
     bars: doc.bars.map((b) => ({ ...b, tracks: [...b.tracks, restsFor(barTicks(b.ts))] })),
   };
-  return { doc: out, cursor: { track: index, bar: c.bar, beat: 0, string: startString(track) }, changedBar: 0 };
+  return { doc: out, cursor: { track: index, bar: c.bar, beat: 0, string: track.tuning.length }, changedBar: 0 };
 }
 
 export function removeTrack(doc: SongDoc, c: Cursor, index: number): Edit {
@@ -470,7 +466,7 @@ export function updateTrack(doc: SongDoc, c: Cursor, index: number, change: Part
   const track = doc.tracks[index];
   if (!track) return same(doc, c);
   // A drum track's lanes are its kit, not a tuning, and its sound is always the drum kit.
-  if (isDrums(track)) change = change.name !== undefined ? { name: change.name } : {};
+  if (track.kind === 'drums') change = change.name !== undefined ? { name: change.name } : {};
   const next: DocTrack = { ...track, ...change, tuning: [...(change.tuning ?? track.tuning)] };
   if (change.name !== undefined) next.name = change.name.trim() || track.name;
   const tracks = doc.tracks.slice();

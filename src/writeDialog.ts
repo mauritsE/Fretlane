@@ -2,10 +2,10 @@ import * as alphaTab from '@coderline/alphatab';
 import type { Song } from '../shared/types.ts';
 import {
   DEFAULT_SOUND,
+  DRUM_TUNING,
   SOUNDS,
   TIME_SIGNATURES,
   TUNING_PRESETS,
-  drumTrack,
   newSongDoc,
   parseTuning,
   pitchName,
@@ -41,7 +41,8 @@ export function tuningField(kind: TrackKind, current?: number[]): { el: HTMLElem
     'select',
     { title: 'Tuning' },
     ...presets.map((p) => h('option', { value: p.id, selected: match ? match.id === p.id : p === presets[0] }, p.label)),
-    h('option', { value: 'custom', selected: !!current && !match }, 'Custom…'),
+    // A drum kit has no tuning to type.
+    kind === 'drums' ? null : h('option', { value: 'custom', selected: !!current && !match }, 'Custom…'),
   );
   const custom = h('input', {
     placeholder: kind === 'bass' ? 'Lowest string first, e.g. D A D G' : 'Lowest string first, e.g. C G C F A D',
@@ -99,7 +100,7 @@ export function openNewSongDialog(): void {
             if (!tuning) throw new Error('Type the bass tuning as note names, lowest string first (4 to 8 strings).');
             tracks.push({ name: 'Bass', kind: 'bass', sound: bassSound.value, tuning });
           }
-          if (drumsOn.checked) tracks.push(drumTrack());
+          if (drumsOn.checked) tracks.push({ name: 'Drums', kind: 'drums', sound: DEFAULT_SOUND.drums, tuning: [...DRUM_TUNING] });
           if (!tracks.length) throw new Error('Pick at least one instrument.');
           const [num, den] = ts.value.split('/').map(Number) as [number, number];
           const doc = newSongDoc({ title: title.value, artist: artist.value, tempo: Number(tempo.value), ts: [num, den], tracks });
@@ -125,7 +126,7 @@ export function openNewSongDialog(): void {
       h('legend', {}, 'Instruments'),
       h('div.instrument-row', {}, h('label.check', {}, gtrOn, 'Guitar'), gtrTuning.el, gtrSound),
       h('div.instrument-row', {}, h('label.check', {}, bassOn, 'Bass'), bassTuning.el, bassSound),
-      h('div.instrument-row', {}, h('label.check', {}, drumsOn, 'Drums'), h('small.hint', {}, 'Full kit')),
+      h('div.instrument-row', {}, h('label.check', {}, drumsOn, 'Drums')),
       h('small.hint', {}, 'Ukulele, mandolin, banjo and extra tracks can be added in the editor with + Track.'),
     ),
     status,

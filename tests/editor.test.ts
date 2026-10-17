@@ -2,12 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import * as alphaTab from '@coderline/alphatab';
 import {
-  DRUM_KIT,
-  DRUM_LANES,
+  DEFAULT_SOUND,
+  DRUM_TUNING,
   TUNING_PRESETS,
   barStatus,
+  drumLane,
   drumLaneAt,
-  drumTrack,
+  drumStaffLine,
+  laneName,
   barTicks,
   beatTicks,
   describeTicks,
@@ -437,14 +439,34 @@ describe('editor ⇄ alphaTab', () => {
 \track "Drums"
 \instrument percussion
 \staff {score}
-:4 36 38 36 38 |`;
+(36 42).4 38 (36 56) 38 |`;
     const { doc, dropped } = scoreToDoc(parse(tex));
-    expect(doc.tracks.map((t) => [t.name, t.kind])).toEqual([['Gtr', 'guitar'], ['Drums', 'drums']]);
-    expect(dropped).toEqual(['grace notes']);
-    // Kick and snare land on their lanes.
-    const kick = DRUM_KIT.indexOf(36) + 1;
-    const snare = DRUM_KIT.indexOf(38) + 1;
-    expect(show(doc, 1)).toEqual([`0.${kick}:4 0.${snare}:4 0.${kick}:4 0.${snare}:4`]);
+    expect(doc.tracks.map((t) => `${t.name}:${t.kind}`)).toEqual(['Gtr:guitar', 'Drums:drums']);
+    expect(dropped).toEqual(expect.arrayContaining(['grace notes', "drum sounds the editor's kit doesn't have"]));
+    // Hits are lanes of the editor's kit (1 = crash … 11 = kick); 56 (cowbell) isn't in it.
+    const lanes = doc.bars[0].tracks[1].map((b) => b.notes.map((n) => laneName(doc.tracks[1], n.string)).join('+'));
+    expect(lanes).toEqual(['Hi-hat+Kick', 'Snare', 'Kick', 'Snare']);
+  });
+
+  it('writes drum tracks as notation with one-note chords, and reads them back', () => {
+    let doc = song([GUITAR], 1);
+    doc = addTrack(doc, START, { name: 'Drums', kind: 'drums', sound: 'percussion', tuning: DRUM_TUNING }).doc;
+    const c: Cursor = { track: 1, bar: 0, beat: 0, string: drumLane('kick') };
+    // Any digit is a hit on the cursor's drum; techniques are refused.
+    doc = typeFret(doc, c, 7, { duration: 8 }).doc;
+    doc = typeFret(doc, { ...c, string: drumLane('closedHiHat') }, 3, { duration: 8 }).doc;
+    doc = typeFret(doc, { ...c, beat: 1, string: drumLane('snare') }, 0, { duration: 8 }).doc;
+    expect(doc.bars[0].tracks[1][0].notes).toEqual([{ string: 4, fret: 0 }, { string: 11, fret: 0 }]);
+    expect(toggleNoteFlag(doc, c, 'hammer').message).toMatch(/guitar and bass/);
+    const tex = docToTex(doc);
+    expect(tex).toContain('\\instrument percussion\n\\staff {score}\n\\clef neutral');
+    expect(tex).toContain('(42 36).8 (38).8');
+    const score = parse(tex);
+    const drums = score.tracks[1];
+    const midi = drums.staves[0].bars[0].voices[0].beats[0].notes.map((n) => drums.percussionArticulations[n.percussionArticulation].outputMidiNumber);
+    expect(midi.sort()).toEqual([36, 42]);
+    expect(barStatus(doc, 1, 0).diff).toBe(0);
+    expect(docToTex(scoreToDoc(score).doc)).toBe(tex);
   });
 
   it('opens the demo songs, which were not written in the editor', () => {
@@ -459,70 +481,23 @@ describe('editor ⇄ alphaTab', () => {
 });
 
 describe('more instruments', () => {
-  const lane = (gm: number) => DRUM_KIT.indexOf(gm) + 1;
-
-  it('writes a drum track alphaTab plays as a drum kit', () => {
-    let e = addTrack(song([GUITAR], 1), START, drumTrack());
-    expect(e.cursor.track).toBe(1);
-    const hit = (gms: number[], entry: Entry = EIGHTH) => {
-      for (const gm of gms) e = typeFret(e.doc, { ...e.cursor, string: lane(gm) }, 7, entry);
-      e = moveBeat(e.doc, e.cursor, 1);
-    };
-    hit([36, 42]);
-    hit([42]);
-    hit([38, 42]);
-    hit([42], { duration: 8, dotted: true });
-    hit([49, 36], { duration: 16 });
-    hit([44], { duration: 4 });
-    const drums = e.doc.bars[0].tracks[1];
-    // Frets mean nothing on drums: a hit is fret 0, whatever key typed it.
-    expect(drums.flatMap((b) => b.notes.map((n) => n.fret))).toEqual(drums.flatMap((b) => b.notes.map(() => 0)));
-    const score = parse(docToTex(e.doc));
-    const track = score.tracks[1];
-    expect(track.staves[0].isPercussion).toBe(true);
-    const played = track.staves[0].bars[0].voices[0].beats.map((b) => b.notes.map((n) => track.percussionArticulations[n.percussionArticulation].outputMidiNumber).sort());
-    expect(played.slice(0, 6)).toEqual([[36, 42], [42], [38, 42], [42], [36, 49], [44]]);
-    expect(track.staves[0].bars[0].calculateDuration()).toBe(barTicks([4, 4]));
-    // And it reads back exactly.
-    const { doc: back, dropped } = scoreToDoc(score);
-    expect(dropped).toEqual([]);
-    expect(back).toEqual(e.doc);
-  });
-
-  it('keeps drum tracks out of string-only edits', () => {
-    const e = addTrack(song([GUITAR], 1), START, drumTrack());
-    const typed = typeFret(e.doc, { ...e.cursor, string: lane(38) }, 3, EIGHTH);
-    expect(toggleNoteFlag(typed.doc, typed.cursor, 'hammer').changedBar).toBe(-1);
-    const renamed = updateTrack(typed.doc, typed.cursor, 1, { name: 'Kit', tuning: [64, 59], sound: 'banjo' });
-    expect(renamed.doc.tracks[1]).toEqual({ ...drumTrack('Kit') });
-  });
-
-  it('maps a click on the drum staff to the nearest drum', () => {
-    expect(DRUM_KIT[drumLaneAt(3) - 1]).toBe(38);
-    expect(DRUM_KIT[drumLaneAt(7.3) - 1]).toBe(36);
-    // Hi-hat and open hi-hat share a position: a click means the closed one.
-    expect(DRUM_KIT[drumLaneAt(-1) - 1]).toBe(42);
-    expect(DRUM_KIT[drumLaneAt(-5) - 1]).toBe(49);
-    expect(DRUM_KIT[drumLaneAt(12) - 1]).toBe(44);
-    // Every lane can be clicked.
-    for (const l of DRUM_LANES.filter((x) => x.gm !== 46)) expect(DRUM_KIT[drumLaneAt(l.staffLine) - 1]).toBe(l.gm);
-  });
+  const lane = (midi: number) => DRUM_TUNING.indexOf(midi) + 1;
 
   it('writes ukulele, mandolin and banjo tracks and recognises them again', () => {
     const tracks: DocTrack[] = (['ukulele-standard', 'mandolin-standard', 'banjo-open-g'] as const).map((id) => {
       const p = TUNING_PRESETS.find((x) => x.id === id)!;
-      const sound = { ukulele: 'acousticguitarnylon', mandolin: 'acousticguitarsteel', banjo: 'banjo' }[p.kind as 'ukulele'];
-      return { name: p.kind, kind: p.kind, sound, tuning: p.tuning };
+      return { name: p.kind, kind: p.kind, sound: DEFAULT_SOUND[p.kind], tuning: p.tuning };
     });
     let doc = song(tracks, 1);
-    // Open strings, top line of the tab first: the ukulele's re-entrant G is string 4.
+    // Open strings at the bottom of the tab: the ukulele's and the banjo's re-entrant high G.
     doc = typeFret(doc, { track: 0, bar: 0, beat: 0, string: 4 }, 0, { duration: 1 }).doc;
     doc = typeFret(doc, { track: 2, bar: 0, beat: 0, string: 5 }, 0, { duration: 1 }).doc;
     const score = parse(docToTex(doc));
     expect(score.tracks.map((t) => t.playbackInfo.program)).toEqual([24, 25, 105]);
     expect(score.tracks[0].staves[0].bars[0].voices[0].beats[0].notes[0].realValue).toBe(67);
     expect(score.tracks[2].staves[0].bars[0].voices[0].beats[0].notes[0].realValue).toBe(67);
-    const { doc: back } = scoreToDoc(score);
+    const { doc: back, dropped } = scoreToDoc(score);
+    expect(dropped).toEqual([]);
     expect(back.tracks.map((t) => t.kind)).toEqual(['ukulele', 'mandolin', 'banjo']);
     expect(back).toEqual(doc);
   });
@@ -531,6 +506,34 @@ describe('more instruments', () => {
     expect(parseTuning('G C E A', 'ukulele')).toEqual([69, 64, 60, 55]);
     expect(parseTuning('G4 C4 E4 A4', 'ukulele')).toEqual([69, 64, 60, 67]);
     expect(parseTuning('G D A E', 'mandolin')).toEqual([76, 69, 62, 55]);
-    expect(parseTuning('G D A E', 'drums')).toBeNull();
+  });
+
+  it('maps a click on the drum staff to the nearest drum', () => {
+    expect(DRUM_TUNING[drumLaneAt(3) - 1]).toBe(38);
+    expect(DRUM_TUNING[drumLaneAt(7.3) - 1]).toBe(36);
+    // Shared positions mean the everyday drum: hi-hat over open hi-hat, snare over side stick.
+    expect(DRUM_TUNING[drumLaneAt(-1) - 1]).toBe(42);
+    expect(DRUM_TUNING[drumLaneAt(3.2) - 1]).toBe(38);
+    expect(DRUM_TUNING[drumLaneAt(-5) - 1]).toBe(49);
+    expect(DRUM_TUNING[drumLaneAt(12) - 1]).toBe(44);
+    for (const midi of DRUM_TUNING.filter((m) => m !== 46 && m !== 37)) expect(DRUM_TUNING[drumLaneAt(drumStaffLine(midi)) - 1]).toBe(midi);
+  });
+
+  it('reads drums from other tabs onto the nearest drum of the kit', () => {
+    const tex = String.raw`\track "Drums"
+\instrument percussion
+\staff {score}
+(35 57).4 (40 53).4 (45 41).4 r.4 |`;
+    const { doc, dropped } = scoreToDoc(parse(tex));
+    expect(dropped).toEqual([]);
+    expect(doc.bars[0].tracks[0].slice(0, 3).map((b) => b.notes.map((n) => DRUM_TUNING[n.string - 1]).sort())).toEqual([[36, 49], [38, 51], [43, 47]]);
+  });
+
+  it('keeps a drum track a drum kit when its settings change', () => {
+    const drums: DocTrack = { name: 'Drums', kind: 'drums', sound: DEFAULT_SOUND.drums, tuning: [...DRUM_TUNING] };
+    const doc = song([GUITAR, drums], 1);
+    const e = updateTrack(doc, { ...START, track: 1, string: lane(36) }, 1, { name: 'Kit', tuning: [64, 59], sound: 'banjo' });
+    expect(e.doc.tracks[1]).toEqual({ ...drums, name: 'Kit' });
   });
 });
+
