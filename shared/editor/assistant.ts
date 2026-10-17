@@ -34,6 +34,8 @@ import {
   type TrackKind,
 } from './doc.ts';
 import { clampCursor, normalizeRange, type BarRange, type Cursor, type Edit } from './commands.ts';
+import { chordsText, songHarmony } from './harmony.ts';
+import { riffCheckProblem, type RiffCheckContext } from './riffCheck.ts';
 
 export type RiffMode = 'improve' | 'generate';
 
@@ -50,6 +52,8 @@ export interface RiffRequest {
   bars: number;
   song: string;
   focus: string;
+  /** What the server needs to check the answer (riffCheck.ts). Older apps send none. */
+  check?: RiffCheckContext;
 }
 
 /**
@@ -122,6 +126,7 @@ export function riffRequestProblem(req: unknown): string | null {
   if (!Number.isInteger(r.bars) || r.bars! < 1 || r.bars! > MAX_RIFF_BARS) return `bars must be 1 to ${MAX_RIFF_BARS}.`;
   if (typeof r.song !== 'string' || !r.song || r.song.length > MAX_SONG_CHARS) return 'The song is too long for the assistant.';
   if (typeof r.focus !== 'string' || !r.focus || r.focus.length > MAX_FOCUS_CHARS) return 'The selection is too long for the assistant. Select fewer bars.';
+  if (r.check !== undefined) return riffCheckProblem(r.check, r.bars!);
   return null;
 }
 
@@ -238,6 +243,7 @@ How to write:
 - Techniques (guitar and bass): hammer (hammer-on or pull-off into the next note on that string), slide (slide into the next note on that string), vibrato, bend (a full-tone bend), palmMute, letRing, dead (a muted, percussive note), tie (holds the previous note on that string; give it the same fret). Use them where a player would, not on every note.
 - When improving, keep what makes the riff recognisable (its key, its rhythmic identity, its best idea) unless the guitarist asks for something different, and return the same number of bars.
 - When writing something new, follow the guitarist's description, and fit the key, feel and tempo of the music that comes before it if there is any.
+- The song comes with its key and the chord in each bar, estimated from the notes. Use them as a guide; trust the notes where they disagree.
 - The explanation is one or two plain sentences: what you wrote, or what you changed. No tab, no lists.`;
 
 /** The question, after the song: where to work and what the guitarist asked. */
@@ -370,6 +376,10 @@ export function songText(doc: SongDoc, focusBar = 0): string {
     if (bits.length) marks.push(`Bar ${i + 1}: ${bits.join(', ')}`);
   });
   if (marks.length) head.push('Structure:', ...marks);
+  const harmony = songHarmony(doc);
+  if (harmony.key) head.push(`Key (estimated from the notes): ${harmony.key.name}.`);
+  const chords = chordsText(harmony.chords);
+  if (chords) head.push(chords);
   head.push('', 'Tracks:', ...doc.tracks.map(trackText));
   const body = (from: number, to: number) =>
     doc.tracks.flatMap((t, i) => ['', `Track ${i + 1} "${t.name}" (${t.kind}), bar by bar:`, ...barLines(doc, i, from, to)]);
@@ -407,7 +417,8 @@ export function buildRiffRequest(
     const r = normalizeRange(opts.range, doc);
     lines.push(`The guitarist is on track ${track + 1} "${t.name}" and selected bars ${r.from + 1}–${r.to + 1}:`);
     showRange(r.from, r.to);
-    return { mode: 'improve', prompt: opts.prompt, bars: r.to - r.from + 1, song: songText(doc, r.from), focus: lines.join('\n') };
+    const bars = r.to - r.from + 1;
+    return { mode: 'improve', prompt: opts.prompt, bars, song: songText(doc, r.from), focus: lines.join('\n'), check: checkContext(doc, r.from, bars) };
   }
   const at = Math.min(Math.max(0, opts.at), doc.bars.length);
   lines.push(
@@ -422,12 +433,30 @@ export function buildRiffRequest(
     lines.push('', `Just before it (bars ${Math.max(0, to - 1) + 1}–${to + 1}):`);
     showRange(Math.max(0, to - 1), to);
   } else lines.push('Nothing has been written before it yet.');
+  const bars = Math.min(MAX_RIFF_BARS, Math.max(1, Math.round(opts.bars)));
   return {
     mode: 'generate',
     prompt: opts.prompt,
-    bars: Math.min(MAX_RIFF_BARS, Math.max(1, Math.round(opts.bars))),
+    bars,
     song: songText(doc, Math.min(at, doc.bars.length - 1)),
     focus: lines.join('\n'),
+    check: checkContext(doc, at, bars),
+  };
+}
+
+/**
+ * What the server checks the answer against: the key, the length of each bar from `from` on (new
+ * bars after the end take the last bar's time signature), and every track's tuning.
+ */
+function checkContext(doc: SongDoc, from: number, bars: number): RiffCheckContext {
+  const last = doc.bars[doc.bars.length - 1].ts;
+  return {
+    key: songHarmony(doc).key,
+    barQuarters: Array.from({ length: bars }, (_, i) => {
+      const [num, den] = doc.bars[from + i]?.ts ?? last;
+      return (num * 4) / den;
+    }),
+    tracks: doc.tracks.map((t) => ({ kind: t.kind, tuning: [...t.tuning] })),
   };
 }
 
