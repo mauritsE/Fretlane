@@ -96,6 +96,8 @@ const errors: string[] = [];
 page.on('pageerror', (e) => errors.push(e.message));
 
 await page.goto(server.url);
+await page.waitForSelector('.topbar .account-chip:not(.hidden)');
+check(((await page.locator('.account-chip').textContent()) ?? '') === 'Sign in', 'not signed in: the top bar offers Sign in');
 await page.click('button.cloud-button');
 await page.waitForSelector('.cloud-dialog a.button.primary');
 check(/Sign in to Fretlane Cloud/.test((await page.locator('.cloud-dialog a.button.primary').textContent()) ?? ''), 'not signed in: the dialog offers sign-in');
@@ -113,6 +115,7 @@ await site.close();
 await page.waitForSelector('.cloud-tab', { timeout: 10000 });
 check((await page.locator('.cloud-tab').count()) === 2, 'the dialog updates by itself and lists the cloud tabs');
 check(/player@example\.com/.test((await page.locator('.cloud-account').textContent()) ?? ''), 'shows who is signed in');
+check(((await page.locator('.account-chip.signed-in .account-name').textContent()) ?? '') === 'player@example.com', 'the top bar shows the account as soon as the sign-in lands');
 await page.screenshot({ path: path.join(SHOTS, 'cloud-2-list.png') });
 
 await page.click('.cloud-tab[data-cloud-id="c1"] button.primary');
@@ -130,6 +133,9 @@ await page.screenshot({ path: path.join(SHOTS, 'cloud-3-player.png') });
 await server.close();
 server = await start();
 await page.goto(server.url);
+await page.waitForSelector('.account-chip.signed-in');
+check(/player@example\.com/.test((await page.locator('.account-chip').getAttribute('title')) ?? ''), 'after a restart: the top bar still shows who is signed in');
+await page.screenshot({ path: path.join(SHOTS, 'cloud-4-account.png'), clip: { x: 0, y: 0, width: 1400, height: 60 } });
 await page.click('button.cloud-button');
 await page.waitForSelector('.cloud-tab');
 check(((await page.locator('.cloud-tab[data-cloud-id="c1"] button.primary').textContent()) ?? '') === 'Open', 'after a restart: still signed in, and the imported tab says Open');
@@ -144,6 +150,8 @@ await page.waitForSelector('.cloud-account button');
 await page.click('.cloud-account button');
 await page.waitForSelector('.cloud-dialog a.button.primary');
 check(!existsSync(path.join(libraryDir, 'cloud.json')), 'sign out forgets the session');
+await page.waitForSelector('.account-chip:not(.signed-in):not(.hidden)');
+check(((await page.locator('.account-chip').textContent()) ?? '') === 'Sign in', 'after sign out the top bar offers Sign in again');
 
 // A callback nobody started is refused.
 const forged = await fetch(`${server.url}/api/cloud/callback?state=forged&token_hash=hash-ok`);

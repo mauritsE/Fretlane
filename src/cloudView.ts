@@ -3,10 +3,52 @@ import { api } from './api.ts';
 import { h, toast } from './dom.ts';
 
 const POLL_MS = 2000;
+/** Fired on window with the latest `CloudStatus` whenever the dialog learns it, so the account chip follows sign-in and sign-out. */
+const STATUS_EVENT = 'fretlane:cloud-status';
+
+function announce(status: CloudStatus): void {
+  window.dispatchEvent(new CustomEvent<CloudStatus>(STATUS_EVENT, { detail: status }));
+}
 
 /** "☁ Cloud" in the library: sign in to Fretlane Cloud and open tabs stored there. */
 export function cloudButton(): HTMLButtonElement {
   return h('button.cloud-button', { title: 'Open tabs from your Fretlane Cloud library', onclick: () => openCloudDialog() }, '☁ Cloud');
+}
+
+/**
+ * The account chip at the right end of the library's top bar: who is signed in to Fretlane Cloud,
+ * or a "Sign in" button. Either way a click opens the cloud dialog, which has sign-in and sign-out.
+ */
+export function accountChip(): HTMLButtonElement {
+  const chip = h('button.account-chip.hidden', { type: 'button', onclick: () => openCloudDialog() });
+  const draw = (status: CloudStatus) => {
+    chip.classList.remove('hidden');
+    chip.classList.toggle('signed-in', status.connected);
+    if (!status.connected) {
+      chip.title = 'Sign in to Fretlane Cloud';
+      chip.replaceChildren('Sign in');
+      return;
+    }
+    const name = status.email || 'Fretlane Cloud';
+    chip.title = `Signed in to Fretlane Cloud${status.email ? ` as ${status.email}` : ''}`;
+    chip.replaceChildren(h('span.avatar', { 'aria-hidden': 'true' }, name[0].toUpperCase()), h('span.account-name', {}, name));
+  };
+  const refresh = () => api.cloudStatus().then(draw, () => undefined);
+  const onStatus = (e: Event) => {
+    // The library re-renders its top bar; a chip that left the page stops listening.
+    if (!chip.isConnected) return stop();
+    draw((e as CustomEvent<CloudStatus>).detail);
+  };
+  // Back from signing in in the browser (even with the dialog closed): check again.
+  const onFocus = () => (chip.isConnected ? void refresh() : stop());
+  const stop = () => {
+    window.removeEventListener(STATUS_EVENT, onStatus);
+    window.removeEventListener('focus', onFocus);
+  };
+  window.addEventListener(STATUS_EVENT, onStatus);
+  window.addEventListener('focus', onFocus);
+  void refresh();
+  return chip;
 }
 
 export function openCloudDialog(): void {
@@ -43,6 +85,7 @@ export function openCloudDialog(): void {
     } catch (err) {
       return message((err as Error).message, 'form-status.error');
     }
+    announce(status);
     if (closed) return;
     if (status.connected) await showTabs(status);
     else await showSignIn(status);
