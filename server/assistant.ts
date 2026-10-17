@@ -10,7 +10,7 @@
  */
 import Anthropic from '@anthropic-ai/sdk';
 import { envVar } from '../shared/brand.ts';
-import { RIFF_SCHEMA, RIFF_SYSTEM_PROMPT, riffRequestProblem, riffUserContent, type AssistantUsage, type RiffRequest } from '../shared/editor/assistant.ts';
+import { RIFF_SCHEMA, RIFF_SYSTEM_PROMPT, riffRequestProblem, riffUserContent, type AssistantStatus, type AssistantUsage, type RiffRequest } from '../shared/editor/assistant.ts';
 import type { FretlaneCloud } from './cloud.ts';
 import { HttpError } from './library.ts';
 
@@ -40,6 +40,13 @@ export class RiffAssistant {
 
   get via(): AssistantVia {
     return this.client ? 'own-key' : 'cloud';
+  }
+
+  /** Whether the assistant can be used, and this month's bars through Fretlane Cloud. */
+  async status(): Promise<AssistantStatus> {
+    // With an own key nothing is counted, and no plan is needed.
+    if (this.client) return { access: 'own-key', usage: null, pricingUrl: this.cloud.pricingUrl };
+    return this.cloud.assistantStatus();
   }
 
   async riff(req: RiffRequest): Promise<AssistantAnswer> {

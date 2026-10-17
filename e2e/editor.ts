@@ -117,6 +117,10 @@ const fake = http.createServer(async (req, res) => {
     if (req.method === 'PATCH') for (const r of hits) Object.assign(r, b);
     return json(200, hits.map((r) => ({ ...r, spotify_url: null, youtube_url: null, sync_offset: null, updated_at: '' })));
   }
+  if (url.pathname === '/api/public/app/riff-assistant' && req.method === 'GET') {
+    if (subscription?.status !== 'active') return json(402, { error: 'The songwriting assistant comes with the Fretlane Cloud plan.' });
+    return json(200, { usage: { plan: 'Fretlane Cloud', used: assistantBarsUsed, allowance: 96, resetsOn: '2026-11-01T00:00:00.000Z' } });
+  }
   if (url.pathname === '/api/public/app/riff-assistant' && req.method === 'POST') {
     // Stands in for the website calling Claude: a canned riff, so the test is about the app.
     const r = JSON.parse(body) as (typeof riffRequests)[number];
@@ -323,6 +327,8 @@ if (stable(reopened) !== stable(before)) {
 await page.keyboard.press('Escape');
 for (let i = 0; i < 6; i++) await page.keyboard.press('Control+ArrowRight');
 check(/Write a new riff from bar 5/.test((await page.locator('.ai-mode').textContent()) ?? ''), 'riff assistant without a selection: offers to write a new riff from the cursor bar');
+await page.waitForSelector('.ai-meter:not(.hidden)', { timeout: 10000 });
+check((await page.locator('.ai-meter-text').textContent()) === '0 of 96 bars used · resets 1 Nov', 'the bar under the assistant shows the plan\'s bars used this month before anything is asked');
 await page.click('.ai-ideas .chip >> nth=1');
 check(/Funky/.test(await page.inputValue('.ai-prompt')), 'clicking an idea fills in the prompt');
 await page.fill('.ai-prompt', 'a funky riff 12');
@@ -337,7 +343,13 @@ check(gen?.mode === 'generate' && gen.prompt === 'a funky riff 12' && gen.bars =
 check(s.doc.bars.length === 6 && beats(s.doc, 4) === Array(8).fill('3.6:8').join(' ') && beats(s.doc, 5) === Array(8).fill('5.6:8').join(' '), `the new riff fills the empty bar 5 and adds bar 6; the overlong bar is trimmed (${beats(s.doc, 4)})`);
 const resultText = (await page.locator('.ai-result').textContent()) ?? '';
 check(resultText.includes('A funky two-bar riff') && resultText.includes('trimmed or filled with rests') && resultText.includes('bars 5–6'), 'the result shows the explanation, says what was fixed and where the riff went');
-check(resultText.includes('2 of 96 assistant bars used this month (Fretlane Cloud); resets on 1 November.'), 'the result shows the plan\'s assistant bars used this month');
+const meter = async () => ({
+  text: await page.locator('.ai-meter-text').textContent(),
+  width: await page.locator('.ai-meter-fill').evaluate((el) => (el as HTMLElement).style.width),
+  level: await page.locator('.ai-meter').getAttribute('data-level'),
+});
+const m1 = await meter();
+check(m1.text === '2 of 96 bars used · resets 1 Nov' && m1.width === '2%' && m1.level === 'ok', `the bar under the assistant counts the bars just written (${JSON.stringify(m1)})`);
 check(/Bars 5–6 selected/.test((await page.locator('.edit-pos').textContent()) ?? '') && /Improve bars 5–6/.test((await page.locator('.ai-mode').textContent()) ?? ''), 'the new bars are selected, so the assistant now offers to improve them');
 await page.screenshot({ path: path.join(SHOTS, 'editor-5-assistant.png') });
 
@@ -368,6 +380,10 @@ await page.locator('.ai-prompt').evaluate((el) => (el as HTMLTextAreaElement).bl
 await page.click('.ai-go');
 await page.waitForSelector('.ai-result .warn', { timeout: 15000 });
 check(/You have 1 of your 96 songwriting assistant bars left this month/.test((await page.locator('.ai-result').textContent()) ?? '') && stable((await ed()).doc) === docBefore, 'when the month\'s bars run out, the editor shows the website\'s message and the song stays as it was');
+await page.waitForFunction(() => document.querySelector('.ai-meter-text')?.textContent?.startsWith('95 of 96'), undefined, { timeout: 10000 });
+const m2 = await meter();
+check(m2.level === 'low' && m2.width === '99%', `then the bar shows how little is left (${JSON.stringify(m2)})`);
+await page.screenshot({ path: path.join(SHOTS, 'editor-5c-assistant-bars-low.png') });
 assistantBarsUsed = barsBefore;
 
 // More parts: a riff with bass and drums gets two new tracks.
@@ -554,6 +570,37 @@ await page.waitForSelector('.premium-dialog');
 await page.click('.premium-dialog button:has-text("Not now")');
 await page.waitForSelector('a.button:has-text("Open in the player")');
 check(true, 'the editor offers the player instead; the song still plays');
+
+// ---------- the assistant without a paid plan ----------
+// The Mac App Store build includes the editor, but the assistant still needs a paid Fretlane Cloud
+// plan: the box shows, locked, with a button to sign in or upgrade.
+const masDir = await fs.mkdtemp(path.join(os.tmpdir(), 'fretlane-editor-e2e-mas-'));
+const mas = await startServer({ port: 0, host: '127.0.0.1', libraryDir: masDir, assets: dirAssets(path.join(ROOT, 'dist')), cloud, seed: path.join(ROOT, 'demo'), premiumIncluded: true });
+const masSong = (await (await fetch(`${mas.url}/api/songs`, { method: 'POST', body: JSON.stringify({ title: 'Store Riff', written: true, tabText: savedTex }) })).json()) as { id: string };
+await page.goto(`${mas.url}/#/write/${encodeURIComponent(masSong.id)}`);
+await page.waitForSelector('.ai-lock:not(.hidden) a:has-text("Sign in")', { timeout: 15000 });
+check(
+  /comes with a paid Fretlane Cloud plan/.test((await page.locator('.ai-lock').textContent()) ?? '') && (await page.locator('.ai-go').isDisabled()) && (await page.locator('.ai-prompt').isDisabled()) && (await page.locator('.ai-meter.hidden').count()) === 1,
+  'signed out: the assistant box shows, locked, and offers to sign in',
+);
+await page.screenshot({ path: path.join(SHOTS, 'editor-8-assistant-signed-out.png') });
+const [masSite] = await Promise.all([context.waitForEvent('page'), page.click('.ai-lock a:has-text("Sign in")')]);
+await masSite.waitForLoadState();
+await masSite.click('#approve');
+await masSite.waitForLoadState();
+await masSite.close();
+// The plan ended above, so the website answers 402.
+await page.waitForSelector('.ai-lock:not(.hidden) a:has-text("Upgrade")', { timeout: 15000 });
+check((await page.locator('.ai-lock a:has-text("Upgrade")').getAttribute('href')) === `${fakeUrl}/pricing` && (await page.locator('.ai-go').isDisabled()), 'signed in without a paid plan: the box stays locked with an Upgrade button to the plans');
+await page.screenshot({ path: path.join(SHOTS, 'editor-8b-assistant-upgrade.png') });
+subscription = { status: 'active', current_period_end: new Date(Date.now() + 30 * 86_400_000).toISOString() };
+assistantBarsUsed = 96;
+await page.waitForSelector('.ai-lock.hidden', { state: 'attached', timeout: 15000 });
+check(!(await page.locator('.ai-go').isDisabled()) && (await page.locator('.ai-meter-text').textContent()) === 'All 96 bars used · resets 1 Nov', 'after upgrading the box unlocks by itself and the bar shows the month\'s bars');
+check((await page.locator('.ai-more:not(.hidden)').getAttribute('href')) === `${fakeUrl}/pricing`, 'with every bar used, "Get more bars" links to the bigger plans');
+await page.screenshot({ path: path.join(SHOTS, 'editor-8c-assistant-more-bars.png') });
+await mas.close();
+await fs.rm(masDir, { recursive: true, force: true });
 
 check(errors.length === 0, `no page errors${errors.length ? ': ' + errors.join(' | ') : ''}`);
 await browser.close();
