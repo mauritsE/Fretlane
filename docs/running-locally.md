@@ -52,7 +52,7 @@ check the production build. It does not reload when you change code.
 
 ## 4. The tab editor and the riff assistant (Premium)
 
-**✎ Write** and the **✨ Riff assistant** need Fretlane Premium, also when you run from source.
+**✎ Write** and the **Riff assistant** need Fretlane Premium, also when you run from source.
 
 1. In the library, click **☁ Cloud** and sign in. Your browser opens the Fretlane website and
    sends you back to the app.
@@ -83,7 +83,7 @@ The riff assistant then works in one of two ways:
   (step 1). Don't put the key in a file inside the project folder: it could end up in a commit.
 
 To try it: open a song you wrote, select a bar or two with **Shift + → / ←**, and press
-**✨ Improve**. With nothing selected, type a description and press **✨ Write**. Ask for "a riff with bass and drums" to get the other parts on their own tracks.
+**Improve**. With nothing selected, type a description and press **Write**. Ask for "a riff with bass and drums" to get the other parts on their own tracks.
 
 ## 5. The desktop app
 
