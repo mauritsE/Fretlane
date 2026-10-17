@@ -1,5 +1,5 @@
 /**
- * The songwriting assistant ("✨ Riff assistant" in the tab editor): Claude improves the bars the
+ * The songwriting assistant ("Riff assistant" in the tab editor): Claude improves the bars the
  * user selected, or writes a new riff from a prompt when nothing is selected. When asked, it also
  * writes the other parts that go with it, such as a second guitar, a bass line or drums, each on
  * its own track (an existing one, or a new one it names).

@@ -212,7 +212,7 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
   const aiMoreBars = h('a.button.small.ai-more.hidden', { target: '_blank', rel: 'noopener', title: 'Bigger plans include more assistant bars a month' }, 'Get more bars');
   /** Why the assistant can't be used yet (signed out, no paid plan), with the way to fix it. */
   const aiLock = h('div.ai-lock.hidden');
-  const aiPanel = h('section.ai-panel', {}, h('h3', {}, '✨ Riff assistant'), aiLock, aiMode, aiPrompt, aiIdeas, h('div.ai-row', {}, aiBarsLabel, h('span.spacer'), aiGo), aiResult, aiMeter, aiMoreBars);
+  const aiPanel = h('section.ai-panel', {}, h('h3', {}, 'Riff assistant ', h('span.badge.ai-badge', { title: 'Written by Claude' }, 'AI')), aiLock, aiMode, aiPrompt, aiIdeas, h('div.ai-row', {}, aiBarsLabel, h('span.spacer'), aiGo), aiResult, aiMeter, aiMoreBars);
 
   root.replaceChildren(
     h(
@@ -1069,7 +1069,7 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
       ? `Improve bar${count === 1 ? '' : 's'} ${r.from + 1}${count === 1 ? '' : `–${r.to + 1}`} of ${doc.tracks[cursor.track].name}, or ask for other parts to go with them.`
       : `Write a new riff from bar ${generateAt() + 1}. Ask for a bass line, drums or a second guitar too. Select bars (Shift + ← →) to improve them instead.`;
     aiBarsLabel.classList.toggle('hidden', improving);
-    aiGo.textContent = aiBusy ? '■ Stop' : improving ? '✨ Improve' : '✨ Write';
+    aiGo.textContent = aiBusy ? '■ Stop' : improving ? 'Improve' : 'Write';
     aiGo.disabled = aiLocked || (!aiBusy && improving && count > MAX_RIFF_BARS);
     if (aiGo.disabled && !aiLocked) aiMode.textContent = `Select at most ${MAX_RIFF_BARS} bars to improve.`;
     aiPrompt.disabled = !!aiBusy || aiLocked;
