@@ -210,6 +210,7 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
     if (parts[1] === 'premium' && (method === 'GET' || method === 'POST')) return send(res, 200, await premium(method === 'POST'));
 
     // The songwriting assistant in the tab editor (Premium, like the editor itself).
+    if (parts[1] === 'assistant' && parts[2] === 'status' && method === 'GET') return send(res, 200, await assistant.status());
     if (parts[1] === 'assistant' && parts[2] === 'riff' && method === 'POST') {
       await requirePremium();
       return send(res, 200, await assistant.riff(await readJson<RiffRequest>(req)));

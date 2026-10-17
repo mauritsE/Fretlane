@@ -22,7 +22,7 @@ import {
   type CloudTabRow,
 } from '../shared/cloud.ts';
 import { HttpError } from './library.ts';
-import type { AssistantUsage, RiffRequest } from '../shared/editor/assistant.ts';
+import type { AssistantStatus, AssistantUsage, RiffRequest } from '../shared/editor/assistant.ts';
 import { decidePremium, entitlementFrom, type EntitlementCheck, type PremiumStatus, type SubscriptionRow } from '../shared/premium.ts';
 
 const TIMEOUT_MS = 15_000;
@@ -276,6 +276,28 @@ export class FretlaneCloud {
     if (res.ok && body.riff) return { riff: body.riff, ...(body.usage ? { usage: body.usage } : {}), ...(body.notice ? { notice: body.notice } : {}) };
     const status = [400, 401, 402, 422, 429, 503].includes(res.status) ? res.status : 502;
     throw new HttpError(status, body.error ?? `The songwriting assistant answered ${res.status}.`);
+  }
+
+  /** The website's plans page. */
+  get pricingUrl(): string {
+    return new URL('/pricing', this.config.siteUrl).toString();
+  }
+
+  /**
+   * Whether this account can use the songwriting assistant, with the plan's bars this month. The
+   * website answers 402 without a paid plan; offline or a website from before the plans is `unknown`.
+   */
+  async assistantStatus(): Promise<AssistantStatus> {
+    const pricingUrl = this.pricingUrl;
+    if (!this.status().connected) return { access: 'signed-out', usage: null, pricingUrl };
+    const url = new URL('/api/public/app/riff-assistant', this.config.siteUrl).toString();
+    const res = await this.authed(url, { passErrors: true }).catch((err: unknown) => (err instanceof HttpError && err.status === 401 ? 'signed-out' : null));
+    if (res === 'signed-out') return { access: 'signed-out', usage: null, pricingUrl };
+    if (res?.status === 402) return { access: 'no-plan', usage: null, pricingUrl };
+    if (!res?.ok) return { access: 'unknown', usage: null, pricingUrl };
+    const u = ((await res.json().catch(() => ({}))) as { usage?: AssistantUsage }).usage;
+    const usage = u && typeof u.used === 'number' && typeof u.allowance === 'number' && typeof u.resetsOn === 'string' ? u : null;
+    return { access: usage ? 'ok' : 'unknown', usage, pricingUrl };
   }
 
   /**
