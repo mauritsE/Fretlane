@@ -11,7 +11,7 @@ description: Build, verify and publish Fretlane's desktop app (Electron + electr
 - The name lives only in `shared/brand.ts` plus `productName` / `appId` in package.json's `build` section.
 - Icon: `build/icon.svg` → `npm run render-icon` → `build/icon.png` (1024², used for every platform). `public/icon.svg` serves as the favicon and in-app logo.
 - Packaging is electron-builder, configured in package.json `build`:
-  - mac: `zip` target for arm64 + x64, with `identity: "-"` so the app is ad-hoc signed.
+  - mac: `dmg` (the installer the website offers) and `zip` targets for arm64 + x64, with `identity: "-"` so the app is ad-hoc signed.
   - win: `nsis`, one-click, per-user install, desktop and Start menu shortcuts.
   - linux: `AppImage`.
   - `scripts/collect-licenses.mjs` puts MIT, alphaTab MPL-2.0, Bravura OFL and Sonivox licences into `resources/licenses`.
@@ -22,7 +22,7 @@ description: Build, verify and publish Fretlane's desktop app (Electron + electr
 3. `xvfb-run -a npx tsx e2e/desktop.ts` drives the real window with Playwright. It covers the app name and title, library migration, render and playback, external links staying out of the window, the Quit menu, and quit-on-close.
 4. `APPIMAGE_EXTRACT_AND_RUN=1 xvfb-run -a node release/smoke.mjs release/out/Fretlane-*.AppImage -- --no-sandbox` launches the built package.
 5. macOS and Windows can only be verified in CI. Run the Release workflow on the branch with `publish: false` (`actions_run_trigger` → `run_workflow`, `release.yml`, ref = the branch) and wait until every job is green:
-   - `macos`: `codesign --verify --deep --strict`, then launches the arm64 app natively and the x64 app via Rosetta.
+   - `macos`: `codesign --verify --deep --strict`, then launches the arm64 app natively and the x64 app via Rosetta. It also verifies both `.dmg`s (`hdiutil verify`, mounts them, checks the app and the Applications link, verifies the signature inside) and launches the arm64 app copied out of its disk image.
    - `macos-intel`: native launch of the Intel app on `macos-15-intel`.
    - `windows`: launches the unpacked app, then does a silent NSIS install (`/S`), stops any auto-started copy, and launches the installed `Fretlane.exe`.
 6. Look at `e2e/screenshots/1*-desktop-*.png`.
@@ -42,7 +42,7 @@ description: Build, verify and publish Fretlane's desktop app (Electron + electr
 Publishing makes a public release, so only do it when the user asks.
 1. Bump `version` in package.json through a normal PR, and merge it.
 2. Run **Release** on `main` with `publish: true`, or push a `vX.Y.Z` tag.
-3. Confirm the run is green and that the release has 4 assets: mac-arm64.zip, mac-x64.zip, windows-setup.exe and linux AppImage (`list_releases`, or `https://api.github.com/repos/<repo>/releases`).
+3. Confirm the run is green and that the release has 6 assets: mac-arm64.dmg, mac-x64.dmg, mac-arm64.zip, mac-x64.zip, windows-setup.exe and linux AppImage. The website's download page (mauritsE/fretlane-sync-magic, `/download`) reads the latest release from the GitHub API and links these files by name pattern; keep `artifactName` patterns in step with `src/lib/releases.ts` there (`list_releases`, or `https://api.github.com/repos/<repo>/releases`).
 
 ## Mac App Store
 - Config: `build.mas` in package.json (inherits `build.mac`, so `identity: "-"` must be overridden: CI passes `-c.mas.identity=null` for the unsigned sandbox check and `-c.mas.identity="$MAS_SIGNING_NAME"` for the store build). Entitlements: `build/entitlements.mas.plist` (sandbox, network server for the 127.0.0.1 library server, network client, user-selected files read-only) and `.inherit.plist`.
