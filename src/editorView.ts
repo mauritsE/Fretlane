@@ -28,8 +28,11 @@ import {
   buildRiffRequest,
   riffRequestProblem,
   describeUsage,
+  usageMeter,
   describeWritten,
   riffFromAnswer,
+  type AssistantStatus,
+  type AssistantUsage,
   type RiffRequest,
   type RiffTarget,
 } from '../shared/editor/assistant.ts';
@@ -203,7 +206,13 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
   const aiBarsLabel = h('label.inline', {}, aiBars);
   const aiGo = h('button.primary.ai-go', { title: 'Ctrl+Enter in the box does the same' });
   const aiResult = h('div.ai-result.hidden');
-  const aiPanel = h('section.ai-panel', {}, h('h3', {}, '✨ Riff assistant'), aiMode, aiPrompt, aiIdeas, h('div.ai-row', {}, aiBarsLabel, h('span.spacer'), aiGo), aiResult);
+  const aiMeterFill = h('div.ai-meter-fill');
+  const aiMeterText = h('span.ai-meter-text');
+  const aiMeter = h('div.ai-meter.hidden', { role: 'meter', 'aria-label': 'Assistant bars used this month', 'aria-valuemin': 0 }, h('div.ai-meter-track', {}, aiMeterFill), aiMeterText);
+  const aiMoreBars = h('a.button.small.ai-more.hidden', { target: '_blank', rel: 'noopener', title: 'Bigger plans include more assistant bars a month' }, 'Get more bars');
+  /** Why the assistant can't be used yet (signed out, no paid plan), with the way to fix it. */
+  const aiLock = h('div.ai-lock.hidden');
+  const aiPanel = h('section.ai-panel', {}, h('h3', {}, '✨ Riff assistant'), aiLock, aiMode, aiPrompt, aiIdeas, h('div.ai-row', {}, aiBarsLabel, h('span.spacer'), aiGo), aiResult, aiMeter, aiMoreBars);
 
   root.replaceChildren(
     h(
@@ -1038,6 +1047,9 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
   // riff from the prompt at the cursor bar, or after it when that bar already has notes. The result
   // is a normal edit, so Ctrl+Z takes it back.
   let aiBusy: AbortController | null = null;
+  /** Signed out or without a paid plan (see showStatus). */
+  let aiLocked = false;
+  let aiWatch: number | undefined;
   /** The last riff put in the song, for "Try again" and "Undo". `doc` is the document right after it. */
   let lastAi: { request: RiffRequest; target: RiffTarget; cursor: Cursor; doc: SongDoc } | null = null;
   let aiShownMode = '';
@@ -1058,15 +1070,72 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
       : `Write a new riff from bar ${generateAt() + 1}. Ask for a bass line, drums or a second guitar too. Select bars (Shift + ← →) to improve them instead.`;
     aiBarsLabel.classList.toggle('hidden', improving);
     aiGo.textContent = aiBusy ? '■ Stop' : improving ? '✨ Improve' : '✨ Write';
-    aiGo.disabled = !aiBusy && improving && count > MAX_RIFF_BARS;
-    if (aiGo.disabled) aiMode.textContent = `Select at most ${MAX_RIFF_BARS} bars to improve.`;
-    aiPrompt.disabled = !!aiBusy;
+    aiGo.disabled = aiLocked || (!aiBusy && improving && count > MAX_RIFF_BARS);
+    if (aiGo.disabled && !aiLocked) aiMode.textContent = `Select at most ${MAX_RIFF_BARS} bars to improve.`;
+    aiPrompt.disabled = !!aiBusy || aiLocked;
     const ideasKey = `${mode}:${doc.tracks[cursor.track].kind}`;
     if (ideasKey === aiShownMode) return;
     aiShownMode = ideasKey;
     aiPrompt.placeholder = improving ? 'What should change? (optional) e.g. "more syncopation"' : 'Describe the riff, e.g. "a funky riff in E minor"';
     const ideas = improving ? IMPROVE_IDEAS : GENERATE_IDEAS[doc.tracks[cursor.track].kind];
     aiIdeas.replaceChildren(...ideas.map((idea) => h('button.chip', { type: 'button', onclick: () => (aiPrompt.value = idea) }, idea)));
+  }
+
+  /** The bar under the assistant: the plan's bars used this month. Hidden when nothing is counted. */
+  function showUsage(usage: AssistantUsage | null | undefined): void {
+    aiMeter.classList.toggle('hidden', !usage);
+    aiMoreBars.classList.toggle('hidden', !usage || usage.used < usage.allowance);
+    if (!usage) return;
+    const m = usageMeter(usage);
+    aiMeterFill.style.width = `${Math.round(m.fraction * 100)}%`;
+    aiMeter.dataset['level'] = m.level;
+    aiMeter.setAttribute('aria-valuemax', String(usage.allowance));
+    aiMeter.setAttribute('aria-valuenow', String(Math.min(usage.used, usage.allowance)));
+    aiMeter.title = describeUsage(usage);
+    aiMeterText.textContent = m.label;
+  }
+
+  /** Signed out or without a paid plan, the box stays, locked, with a button to sign in or upgrade. */
+  function showStatus(s: AssistantStatus): void {
+    aiLocked = s.access === 'signed-out' || s.access === 'no-plan';
+    aiPanel.classList.toggle('locked', aiLocked);
+    aiMoreBars.setAttribute('href', s.pricingUrl);
+    showUsage(s.usage);
+    if (!aiLocked) {
+      window.clearInterval(aiWatch);
+      aiLock.classList.add('hidden');
+    } else if (aiLock.dataset['access'] !== s.access) {
+      // After a click on sign in or upgrade, check every few seconds until the plan is there.
+      const watching = (el: HTMLElement) => {
+        el.addEventListener('click', () => {
+          window.clearInterval(aiWatch);
+          const until = Date.now() + 15 * 60_000;
+          aiWatch = window.setInterval(() => (aiPanel.isConnected && Date.now() < until ? refreshStatus() : window.clearInterval(aiWatch)), 3000);
+        });
+        return el;
+      };
+      const upgrade = watching(h('a.button.primary', { href: s.pricingUrl, target: '_blank', rel: 'noopener' }, s.access === 'no-plan' ? 'Upgrade' : 'See the plans'));
+      aiLock.replaceChildren(
+        h('p', {}, s.access === 'no-plan'
+          ? 'Your Fretlane Cloud account has no paid plan. Upgrade to have the assistant write and improve riffs, with a second guitar, bass and drums.'
+          : 'The assistant comes with a paid Fretlane Cloud plan. Sign in with your Fretlane account to use it.'),
+        h('div.ai-row', {}, upgrade),
+      );
+      if (s.access === 'signed-out') {
+        // A real link (not window.open after an await) so pop-up blockers allow it.
+        api.cloudLogin(location.origin).then(({ url }) => {
+          if (aiLock.dataset['access'] === 'signed-out') aiLock.querySelector('.ai-row')?.prepend(watching(h('a.button.primary', { href: url, target: '_blank', rel: 'noopener' }, 'Sign in')));
+          upgrade.classList.remove('primary');
+        }, () => undefined);
+      }
+      aiLock.classList.remove('hidden');
+    }
+    aiLock.dataset['access'] = aiLocked ? s.access : '';
+    drawAssistant();
+  }
+
+  function refreshStatus(): void {
+    api.assistantStatus().then(showStatus, () => undefined);
   }
 
   function showAiResult(...children: (HTMLElement | string)[]): void {
@@ -1112,6 +1181,7 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
     showAiResult(h('p.ai-thinking', {}, h('span.spinner.small'), request.mode === 'improve' ? 'Reworking your riff…' : 'Writing a riff…'));
     try {
       const { riff, usage, notice } = await api.riffAssistant(request, controller.signal);
+      showUsage(usage);
       const result = riffFromAnswer(riff, doc, target);
       const e = applyRiff(doc, from, target, result);
       if (e.doc.tracks.length !== doc.tracks.length || e.cursor.track !== cursor.track) renderedTrack = -1;
@@ -1127,7 +1197,6 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
         ...result.fixes.map((f) => h('p.hint', {}, f)),
         ...(notice ? [h('p.hint.warn', {}, notice)] : []),
         h('p.hint', {}, `Now in ${parts}${where}. Ctrl+Z takes it back.`),
-        ...(usage ? [h('p.hint.ai-usage', {}, describeUsage(usage))] : []),
         h(
           'div.ai-row',
           {},
@@ -1138,6 +1207,8 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
       );
     } catch (err) {
       showAiResult(h('p.hint.warn', {}, controller.signal.aborted ? 'Stopped.' : (err as Error).message));
+      // E.g. the month's bars ran out: the bar shows where things stand.
+      if (!controller.signal.aborted) refreshStatus();
     } finally {
       aiBusy = null;
       drawAssistant();
@@ -1154,6 +1225,7 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
   }
 
   aiGo.onclick = () => void runAssistant();
+  refreshStatus();
   aiPrompt.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();

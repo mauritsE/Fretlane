@@ -13,6 +13,7 @@ import {
   asciiTab,
   buildRiffRequest,
   describeUsage,
+  usageMeter,
   describeWritten,
   riffFromAnswer,
   riffRequestProblem,
@@ -446,6 +447,24 @@ describe('server: RiffAssistant', () => {
 
   it('describes the month\'s assistant bars for the editor', () => {
     expect(describeUsage(usage)).toBe('40 of 96 assistant bars used this month (Fretlane Cloud); resets on 1 November.');
+  });
+
+  it('fills the bar under the assistant and warns as the month\'s bars run low', () => {
+    expect(usageMeter(usage)).toEqual({ fraction: 40 / 96, label: '40 of 96 bars used · resets 1 Nov', level: 'ok' });
+    expect(usageMeter({ ...usage, used: 80 }).level).toBe('low');
+    expect(usageMeter({ ...usage, used: 96 })).toEqual({ fraction: 1, label: 'All 96 bars used · resets 1 Nov', level: 'out' });
+    // Never past full, even if the website counted a little over.
+    expect(usageMeter({ ...usage, used: 100 }).fraction).toBe(1);
+  });
+
+  it('asks Fretlane Cloud whether the assistant can be used, and needs no plan with an own key', async () => {
+    const status = { access: 'ok', usage, pricingUrl: 'https://x/pricing' };
+    let asked = 0;
+    const cloud = { pricingUrl: 'https://x/pricing', assistantStatus: async () => (asked++, status) } as unknown as FretlaneCloud;
+    expect(await new RiffAssistant(cloud, undefined).status()).toEqual(status);
+    const { client } = fakeClient({ stop_reason: 'end_turn', content: [] });
+    expect(await new RiffAssistant(cloud, undefined, client).status()).toEqual({ access: 'own-key', usage: null, pricingUrl: 'https://x/pricing' });
+    expect(asked).toBe(1);
   });
 
   it('uses Fretlane Cloud without an own key, and asks to sign in when signed out', async () => {

@@ -147,6 +147,8 @@ class FakeSupabase {
     return null;
   }
 
+  assistantUsage: unknown = null; // the month's usage, 'no-plan', or null for an older website
+
   fetch: typeof fetch = async (input, init) => {
     const url = new URL(String(input));
     const headers = new Headers(init?.headers);
@@ -168,6 +170,12 @@ class FakeSupabase {
     if (url.pathname === '/auth/v1/user') return Response.json({ id: 'user-1', email: 'me@example.com' });
     const written = this.write(url, init);
     if (written) return written;
+    // The website's assistant route: the month's bars, 402 without a paid plan, or (null) a website
+    // from before the plans (404).
+    if (url.pathname === '/api/public/app/riff-assistant' && (init?.method ?? 'GET') === 'GET') {
+      if (this.assistantUsage === 'no-plan') return Response.json({ error: 'The songwriting assistant comes with the Fretlane Cloud plan.' }, { status: 402 });
+      return this.assistantUsage ? Response.json({ usage: this.assistantUsage }) : new Response('not found', { status: 404 });
+    }
     if (url.pathname === '/rest/v1/subscriptions') return Response.json(this.subscription ? [this.subscription] : []);
     if (url.pathname === '/rest/v1/rpc/my_kofi_membership' && init?.method === 'POST') return Response.json(this.kofiEnd);
     if (url.pathname === '/rest/v1/tabs') {
@@ -279,6 +287,25 @@ describe('FretlaneCloud', () => {
     expect((await c.logout()).connected).toBe(false);
     expect(fake.calls.some((call) => call.startsWith('POST /auth/v1/logout'))).toBe(true);
     await expect(c.listTabs()).rejects.toThrow(/Not signed in/);
+  });
+
+  it("tells whether the assistant can be used, with the plan's bars this month", async () => {
+    const c = await cloud();
+    const pricingUrl = 'https://site.example/pricing';
+    const usage = { plan: 'Fretlane Cloud', used: 40, allowance: 96, resetsOn: '2026-11-01T00:00:00.000Z' };
+    fake.assistantUsage = usage;
+    // Signed out: doesn't ask the website.
+    expect(await c.assistantStatus()).toEqual({ access: 'signed-out', usage: null, pricingUrl });
+    expect(fake.calls.some((x) => x.includes('riff-assistant'))).toBe(false);
+    await signIn(c);
+    expect(await c.assistantStatus()).toEqual({ access: 'ok', usage, pricingUrl });
+    fake.assistantUsage = 'no-plan';
+    expect(await c.assistantStatus()).toEqual({ access: 'no-plan', usage: null, pricingUrl });
+    // An older website, or offline: unknown, so the user can still try.
+    fake.assistantUsage = null;
+    expect((await c.assistantStatus()).access).toBe('unknown');
+    fake.offline = true;
+    expect((await c.assistantStatus()).access).toBe('unknown');
   });
 
   it('imports a cloud tab into the library once', async () => {

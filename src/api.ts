@@ -2,7 +2,7 @@ import type { NewSongInput, Song, SongPatch } from '../shared/types.ts';
 import type { MediaSearchResponse, MediaSource, PublicSettings } from '../shared/mediaSearch.ts';
 import type { CloudStatus, CloudSyncStatus, CloudTabSummary } from '../shared/cloud.ts';
 import type { PremiumStatus } from '../shared/premium.ts';
-import type { AssistantUsage, RiffRequest } from '../shared/editor/assistant.ts';
+import type { AssistantStatus, AssistantUsage, RiffRequest } from '../shared/editor/assistant.ts';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
@@ -42,6 +42,8 @@ export const api = {
   /** Fretlane Premium (the tab editor). `refresh` asks the website again instead of the cached answer. */
   premium: (refresh = false) => request<PremiumStatus>('/api/premium', refresh ? { method: 'POST' } : undefined),
   /** The songwriting assistant: Claude's riff as raw JSON, to be fitted with riffToBars(). */
+  /** Whether the songwriting assistant can be used, with the plan's bars this month. */
+  assistantStatus: () => request<AssistantStatus>('/api/assistant/status'),
   riffAssistant: (req: RiffRequest, signal?: AbortSignal) =>
     request<{ riff: unknown; via: 'own-key' | 'cloud'; usage?: AssistantUsage; notice?: string }>('/api/assistant/riff', { method: 'POST', body: JSON.stringify(req), signal }),
   /** Saves a written song's tab (alphaTex). `keepalive` lets the save finish while the page closes. */

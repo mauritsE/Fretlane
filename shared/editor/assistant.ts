@@ -71,6 +71,32 @@ export function describeUsage(u: AssistantUsage): string {
   return `${u.used} of ${u.allowance} assistant bars used this month (${u.plan}); resets on ${resets}.`;
 }
 
+/**
+ * Whether the assistant can be used, for the editor's sidebar: with an own API key; through a paid
+ * Fretlane Cloud plan (`ok`, with the month's bars); or not yet, with what to do about it. `unknown`
+ * (offline, or a website that doesn't say) lets the user try, and the request tells.
+ */
+export type AssistantAccess = 'own-key' | 'ok' | 'signed-out' | 'no-plan' | 'unknown';
+
+export interface AssistantStatus {
+  access: AssistantAccess;
+  usage: AssistantUsage | null;
+  /** The website's plans, for the upgrade button. */
+  pricingUrl: string;
+}
+
+/** The bar under the assistant: how much of this month's allowance is used, in a few words. */
+export function usageMeter(u: AssistantUsage): { fraction: number; label: string; level: 'ok' | 'low' | 'out' } {
+  const left = Math.max(0, u.allowance - u.used);
+  const fraction = u.allowance > 0 ? Math.min(1, u.used / u.allowance) : 1;
+  const resets = new Date(u.resetsOn).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+  return {
+    fraction,
+    label: left ? `${u.used} of ${u.allowance} bars used · resets ${resets}` : `All ${u.allowance} bars used · resets ${resets}`,
+    level: left === 0 ? 'out' : fraction >= 0.75 ? 'low' : 'ok',
+  };
+}
+
 export const MAX_RIFF_BARS = 8;
 export const MAX_PROMPT_CHARS = 600;
 /**
