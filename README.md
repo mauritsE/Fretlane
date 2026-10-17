@@ -161,3 +161,5 @@ See the [wiki](https://github.com/mauritsE/Fretlane/wiki): [Support](https://git
 ## License
 
 MIT, see [LICENSE](LICENSE).
+
+Tabs are rendered and played by [alphaTab](https://alphatab.net) (MPL-2.0). Fretlane hides alphaTab's "rendered by alphaTab" line under each score (see `vite.config.ts`), so this is where it gets its credit.
