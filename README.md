@@ -46,6 +46,8 @@ Or build once and run a single process:
 npm start          # builds, then serves app + API on http://localhost:5173
 ```
 
+Step by step, including the tab editor, the riff assistant with your own Claude API key, settings and troubleshooting: [docs/running-locally.md](docs/running-locally.md).
+
 On first start the library is seeded with three small **original** demo tabs and the 22-song songbook, so you can play right away. Songs added to the songbook in a later version are added to existing libraries too, once. A bundled song you delete stays deleted (`library/seeded.json` remembers).
 
 ## Adding songs
