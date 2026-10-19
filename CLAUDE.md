@@ -2,7 +2,7 @@
 
 (Formerly "Songstarr". The app name lives in `shared/brand.ts`; the GitHub repo is `mauritsE/Fretlane`.)
 
-A local-first, open-source Songsterr-style tab player. The browser app (vanilla TypeScript + Vite + alphaTab) talks to a small Node server that stores the library in `library/` as `songs.json` plus tab files.
+A local-first, open-source tab player. The browser app (vanilla TypeScript + Vite + alphaTab) talks to a small Node server that stores the library in `library/` as `songs.json` plus tab files.
 
 ## Architecture
 - `server/app.ts`: `startServer()`, the shared HTTP server. `server/index.ts` is the npm entry (dev/`npm start`); `desktop/main.ts` is the desktop-app entry (Electron: runs the server in-process, shows the UI in a native window, library in `~/Fretlane`).

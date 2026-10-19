@@ -1,6 +1,6 @@
 # Fretlane 🎸
 
-An open-source, local-first tab player in the spirit of Songsterr. Load a tab from anywhere, link a YouTube video or Spotify track or add your own MP3/WAV, and play along. The tab cursor follows the recording.
+An open-source, local-first tab player. Load a tab from anywhere, link a YouTube video or Spotify track or add your own MP3/WAV, and play along. The tab cursor follows the recording.
 
 - **Tabs from anywhere:** Guitar Pro 3–8 (`.gp3/.gp4/.gp5/.gpx/.gp`), MusicXML (`.xml/.musicxml/.mxl`), [alphaTex](https://alphatab.net/docs/alphatex/introduction), and plain-text ASCII tabs. You can upload a file, give a URL (the local server downloads it, so there are no CORS problems), or paste text.
 - **Plays along with YouTube:** the video is the clock. Play, pause, seek, speed and looping on either the tab or the video stay in sync.
