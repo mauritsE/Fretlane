@@ -310,7 +310,7 @@ export class FretlaneCloud {
   ): Promise<Response> {
     const url = /^https?:/.test(target) ? target : this.config.apiUrl + target;
     const send = (token: string) =>
-      this.request(
+      this.requestFollowing(
         url,
         {
           method: init.method ?? 'GET',
@@ -409,6 +409,24 @@ export class FretlaneCloud {
       return await this.fetchImpl(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
     } catch {
       throw new HttpError(502, 'Could not reach Fretlane Cloud. Are you online?');
+    }
+  }
+
+  /**
+   * A signed-in request that follows redirects itself, keeping the Authorization header. fetch
+   * drops it on a redirect to another host, and the website redirects its old address
+   * (fretlane-sync-magic.lovable.app) to its own domain: the token never arrived, the website
+   * answered 401, and the app thought it was signed out. Only https redirects are followed.
+   */
+  private async requestFollowing(url: string, init: RequestInit, timeoutMs?: number): Promise<Response> {
+    let target = url;
+    for (let hop = 0; ; hop++) {
+      const res = await this.request(target, { ...init, redirect: 'manual' }, timeoutMs);
+      const location = res.headers.get('location');
+      if (![301, 302, 303, 307, 308].includes(res.status) || !location || hop === 3) return res;
+      const next = new URL(location, target);
+      if (next.protocol !== 'https:' && new URL(target).protocol === 'https:') return res;
+      target = next.toString();
     }
   }
 }
