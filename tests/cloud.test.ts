@@ -152,6 +152,12 @@ class FakeSupabase {
   fetch: typeof fetch = async (input, init) => {
     const url = new URL(String(input));
     const headers = new Headers(init?.headers);
+    // The website's old address redirects to its own domain, as fretlane-sync-magic.lovable.app does.
+    if (url.host === 'old.site.example' || url.host === 'insecure.site.example') {
+      this.calls.push(`${init?.method ?? 'GET'} ${url.host}${url.pathname}`);
+      const to = url.host === 'old.site.example' ? `https://site.example${url.pathname}` : `http://site.example${url.pathname}`;
+      return new Response(null, { status: 301, headers: { location: to } });
+    }
     this.calls.push(`${init?.method ?? 'GET'} ${url.pathname}${url.search}`);
     if (this.offline) throw new TypeError('fetch failed');
     if (headers.get('apikey') !== 'pk') return new Response('no apikey', { status: 401 });
@@ -306,6 +312,23 @@ describe('FretlaneCloud', () => {
     expect((await c.assistantStatus()).access).toBe('unknown');
     fake.offline = true;
     expect((await c.assistantStatus()).access).toBe('unknown');
+  });
+
+  it('keeps the sign-in when the website redirects to its own domain', async () => {
+    const usage = { plan: 'Studio', used: 0, allowance: 1152, resetsOn: '2026-11-01T00:00:00.000Z' };
+    fake.assistantUsage = usage;
+    const moved = new FretlaneCloud(root, { ...CONFIG, siteUrl: 'https://old.site.example' }, fake.fetch);
+    await moved.init();
+    await signIn(moved);
+    const refreshes = fake.calls.filter((x) => x.includes('/auth/v1/token')).length;
+    expect(await moved.assistantStatus()).toEqual({ access: 'ok', usage, pricingUrl: 'https://old.site.example/pricing' });
+    expect(fake.calls).toContain('GET old.site.example/api/public/app/riff-assistant');
+    // The token arrived on the first try: no refresh loop.
+    expect(fake.calls.filter((x) => x.includes('/auth/v1/token')).length).toBe(refreshes);
+    // A redirect from https to plain http is not followed with the token.
+    const insecure = new FretlaneCloud(root, { ...CONFIG, siteUrl: 'https://insecure.site.example' }, fake.fetch);
+    await insecure.init();
+    expect((await insecure.assistantStatus()).access).toBe('unknown');
   });
 
   it('imports a cloud tab into the library once', async () => {

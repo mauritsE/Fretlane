@@ -54,7 +54,7 @@ On first start the library is seeded with three small **original** demo tabs and
 
 **In the app:** click **+ Add song**, choose *Upload file*, *From URL* or *Paste text*, and optionally paste a YouTube or Spotify track link, click **🔍 Find** to search for one, or click **🎵 Audio file** to use your own recording.
 
-**From Fretlane Cloud:** if you store tabs on the [Fretlane website](https://fretlane-sync-magic.lovable.app) (Fretlane Cloud), click **☁ Cloud** in the library and sign in. Your browser opens the website; sign in with Google and approve this computer. Back in Fretlane you see your cloud tabs: **Add & open** downloads one into your local library, with its YouTube or Spotify link and its sync offset. Fretlane stays signed in until you click **Sign out**.
+**From Fretlane Cloud:** if you store tabs on the [Fretlane website](https://fretlane.app) (Fretlane Cloud), click **☁ Cloud** in the library and sign in. Your browser opens the website; sign in with Google and approve this computer. Back in Fretlane you see your cloud tabs: **Add & open** downloads one into your local library, with its YouTube or Spotify link and its sync offset. Fretlane stays signed in until you click **Sign out**.
 
 **From the command line** (while the app is running):
 

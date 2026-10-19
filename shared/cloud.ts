@@ -21,7 +21,7 @@ export interface CloudConfig {
 }
 
 export const DEFAULT_CLOUD: CloudConfig = {
-  siteUrl: 'https://fretlane-sync-magic.lovable.app',
+  siteUrl: 'https://fretlane.app',
   apiUrl: 'https://c--47485661-84b7-4539-8243-dddc255fb9bf-prod.lovable.cloud',
   apiKey: 'sb_publishable_kC7AwvAIwomnQtCwN3Dlvg_cZsDGFsn',
 };
