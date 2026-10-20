@@ -48,6 +48,10 @@ jobs:
 
   macos:
     runs-on: macos-latest
+    env:
+      # With the Developer ID secrets (release/SIGNING.md) the Mac app is signed and notarised, so
+      # macOS opens it without the "Open Anyway" step; without them it stays ad-hoc signed.
+      SIGN_MAC: ${{ secrets.MAC_DEVELOPER_ID_P12 != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -56,8 +60,32 @@ jobs:
           cache: npm
       - run: npm ci
       # Builds Apple-chip and Intel disk images (the installers on the website) and zips, each
-      # holding an ad-hoc signed Fretlane.app.
-      - run: npm run dist:desktop -- --mac
+      # holding a Fretlane.app: ad-hoc signed, or Developer ID signed and notarised (below).
+      - name: Build (ad-hoc signed)
+        if: env.SIGN_MAC != 'true'
+        run: npm run dist:desktop -- --mac
+      - name: Build, sign with Developer ID and notarise
+        if: env.SIGN_MAC == 'true'
+        env:
+          CSC_LINK: ${{ secrets.MAC_DEVELOPER_ID_P12 }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_DEVELOPER_ID_PASSWORD }}
+          # The certificate's name without its "Developer ID Application: " prefix,
+          # e.g. "Maurits Elzinga (AB12CD34EF)"; electron-builder refuses the prefix.
+          MAC_IDENTITY: ${{ secrets.MAC_DEVELOPER_ID_NAME }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          set -euo pipefail
+          export APPLE_API_KEY="$RUNNER_TEMP/apple-api-key.p8"
+          printf '%s\n' "$APPLE_API_KEY_P8" > "$APPLE_API_KEY"
+          npm run dist:desktop -- --mac \
+            -c.mac.identity="$MAC_IDENTITY" \
+            -c.mac.hardenedRuntime=true \
+            -c.mac.entitlements=build/entitlements.mac.plist \
+            -c.mac.entitlementsInherit=build/entitlements.mac.plist \
+            -c.mac.notarize=true
+          rm -f "$APPLE_API_KEY"
       - name: Verify signatures and launch both apps
         run: |
           set -euo pipefail
@@ -65,6 +93,12 @@ jobs:
             zip=$(ls release/out/Fretlane-*-mac-$arch.zip)
             rm -rf "check-$arch" && mkdir "check-$arch" && ditto -x -k "$zip" "check-$arch"
             codesign --verify --deep --strict --verbose=2 "check-$arch/Fretlane.app"
+            if [ "$SIGN_MAC" = "true" ]; then
+              # What Gatekeeper decides for a downloaded copy: must say "source=Notarized Developer ID".
+              spctl --assess --type execute -vv "check-$arch/Fretlane.app" 2>&1 | tee "spctl-$arch.txt"
+              grep -q "Notarized Developer ID" "spctl-$arch.txt"
+              xcrun stapler validate "check-$arch/Fretlane.app"
+            fi
           done
           node release/smoke.mjs check-arm64/Fretlane.app/Contents/MacOS/Fretlane
           if arch -x86_64 /usr/bin/true 2>/dev/null; then
@@ -86,6 +120,9 @@ jobs:
             test -d "$mnt/Fretlane.app"
             test -L "$mnt/Applications"
             codesign --verify --deep --strict --verbose=2 "$mnt/Fretlane.app"
+            if [ "$SIGN_MAC" = "true" ]; then
+              spctl --assess --type execute -vv "$mnt/Fretlane.app" 2>&1 | grep "Notarized Developer ID"
+            fi
             # "Drag to Applications": copy it out the way Finder does, then launch the copy.
             rm -rf "installed-$arch" && mkdir "installed-$arch" && ditto "$mnt/Fretlane.app" "installed-$arch/Fretlane.app"
             hdiutil detach "$mnt"
