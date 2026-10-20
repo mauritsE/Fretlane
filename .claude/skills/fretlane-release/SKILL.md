@@ -35,7 +35,7 @@ description: Build, verify and publish Fretlane's desktop app (Electron + electr
 - Running as root, as in this sandbox, needs `--no-sandbox` for Electron. CI Linux needs `xvfb-run`, and AppImages need `APPIMAGE_EXTRACT_AND_RUN=1` because there is no FUSE.
 - The Electron binary download can be cut off by the sandbox proxy ("assert(!this.paused)" from undici). Re-run `node node_modules/electron/install.js` until `node_modules/electron/path.txt` exists.
 - Inside Playwright `electronApp.evaluate()`, don't define named helper functions: tsx injects `__name()`, which doesn't exist there.
-- Unsigned apps show Gatekeeper ("can't verify") and SmartScreen warnings. `release/RELEASE_NOTES.md` explains the one-time bypass in plain words, so keep that text jargon-free. Removing the warnings needs a paid Apple Developer ID (plus notarisation) and a Windows signing certificate.
+- Unsigned apps show Gatekeeper ("can't verify") and SmartScreen warnings. `release/RELEASE_NOTES.md` explains the one-time bypass in plain words, so keep that text jargon-free. The `macos` job signs with a Developer ID and notarises when the `MAC_DEVELOPER_ID_*` and `APPLE_API_*` secrets exist (`release/SIGNING.md`): hardened runtime with `build/entitlements.mac.plist`, `-c.mac.notarize=true`, and the verify step requires `spctl` to say "Notarized Developer ID". `MAC_DEVELOPER_ID_NAME` must not include the "Developer ID Application: " prefix (electron-builder rejects it). Without the secrets the build stays ad-hoc signed. Windows still needs a signing certificate.
 - Cloud sessions can't push tags (the push fails with "remote end hung up"). Publish through workflow_dispatch instead.
 
 ## Publishing
