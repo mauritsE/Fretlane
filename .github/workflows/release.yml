@@ -84,14 +84,20 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$password" "$keychain" > /dev/null
           security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
           rm -f "$RUNNER_TEMP/developer-id.p12"
+          # The identity's name, read from the certificate itself, without the "Developer ID
+          # Application: " prefix that electron-builder refuses, e.g. "Maurits Jozef Elzinga (48N8PLP4G7)".
           security find-identity -v -p codesigning "$keychain"
+          name="$(security find-identity -v -p codesigning "$keychain" | sed -n 's/.*"Developer ID Application: \(.*\)"$/\1/p' | head -n 1)"
+          if [ -z "$name" ]; then
+            echo "::error::No Developer ID Application identity in MAC_DEVELOPER_ID_P12. See release/SIGNING.md."
+            exit 1
+          fi
+          echo "Signing as: $name"
           echo "CSC_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
+          echo "MAC_IDENTITY=$name" >> "$GITHUB_ENV"
       - name: Build, sign with Developer ID and notarise
         if: env.SIGN_MAC == 'true'
         env:
-          # The certificate's name without its "Developer ID Application: " prefix,
-          # e.g. "Maurits Elzinga (AB12CD34EF)"; electron-builder refuses the prefix.
-          MAC_IDENTITY: ${{ secrets.MAC_DEVELOPER_ID_NAME }}
           APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
@@ -104,7 +110,8 @@ jobs:
             -c.mac.hardenedRuntime=true \
             -c.mac.entitlements=build/entitlements.mac.plist \
             -c.mac.entitlementsInherit=build/entitlements.mac.plist \
-            -c.mac.notarize=true
+            -c.mac.notarize=true \
+            -c.forceCodeSigning=true
           rm -f "$APPLE_API_KEY"
       - name: Verify signatures and launch both apps
         run: |
