@@ -26,14 +26,13 @@ In <https://github.com/mauritsE/Fretlane/settings/secrets/actions> add:
 | --- | --- |
 | `MAC_DEVELOPER_ID_P12` | the base64 text from step 1.5 |
 | `MAC_DEVELOPER_ID_PASSWORD` | the .p12 password from step 1.4 |
-| `MAC_DEVELOPER_ID_NAME` | the certificate name **without** "Developer ID Application: ", e.g. `Maurits Elzinga (AB12CD34EF)` |
 | `APPLE_API_KEY_P8` | the whole contents of the `.p8` file, including the BEGIN and END lines |
 | `APPLE_API_KEY_ID` | the Key ID |
 | `APPLE_API_ISSUER` | the Issuer ID |
 
 ## 4. Release
 
-Run the Release workflow as usual. In the `macos` job, "Build, sign with Developer ID and notarise" replaces the ad-hoc build. Notarisation usually takes a few minutes. The verification step then checks that Gatekeeper accepts both apps and both disk images as **Notarized Developer ID**. If that check fails, nothing is published.
+Run the Release workflow as usual. In the `macos` job, "Put the Developer ID certificate in a keychain" imports the certificate and reads its name from it ("Signing as: …"), and "Build, sign with Developer ID and notarise" replaces the ad-hoc build. If the app can't be signed, the build stops instead of quietly shipping an unsigned app. Notarisation usually takes a few minutes. The verification step then checks that Gatekeeper accepts both apps and both disk images as **Notarized Developer ID**. If that check fails, nothing is published.
 
 After the first signed release, remove the "Open Anyway" instructions from `release/RELEASE_NOTES.md` and from the website's download page (`src/routes/download.tsx` in mauritsE/fretlane-sync-magic).
 
