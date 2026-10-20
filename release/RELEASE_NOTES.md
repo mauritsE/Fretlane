@@ -15,10 +15,9 @@ Not sure which Mac you have? Apple menu → **About This Mac**. "Chip: Apple M�
 
 ### Opening it the first time
 
-Fretlane is a free hobby project and isn't registered with Apple or Microsoft, so the first time you open it your computer asks whether you trust it. You only have to do this once.
+On a Mac, Fretlane opens like any other app: it is signed and checked by Apple.
 
-- **Mac:** open Fretlane. When macOS says it can't verify the app, click **Done**. Then go to **System Settings → Privacy & Security**, scroll down to "Fretlane was blocked", click **Open Anyway** and confirm. On older macOS versions you can instead right-click Fretlane → **Open** → **Open**.
-- **Windows:** if a blue "Windows protected your PC" box appears, click **More info** → **Run anyway**.
+On Windows, Fretlane isn't registered with Microsoft yet, so the first time you open it Windows may ask whether you trust it. You only have to do this once: if a blue "Windows protected your PC" box appears, click **More info** → **Run anyway**.
 
 ### Using it
 

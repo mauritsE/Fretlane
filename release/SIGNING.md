@@ -34,7 +34,7 @@ In <https://github.com/mauritsE/Fretlane/settings/secrets/actions> add:
 
 Run the Release workflow as usual. In the `macos` job, "Put the Developer ID certificate in a keychain" imports the certificate and reads its name from it ("Signing as: …"), and "Build, sign with Developer ID and notarise" replaces the ad-hoc build. If the app can't be signed, the build stops instead of quietly shipping an unsigned app. Notarisation usually takes a few minutes. The verification step then checks that Gatekeeper accepts both apps and both disk images as **Notarized Developer ID**. If that check fails, nothing is published.
 
-After the first signed release, remove the "Open Anyway" instructions from `release/RELEASE_NOTES.md` and from the website's download page (`src/routes/download.tsx` in mauritsE/fretlane-sync-magic).
+The release notes (`release/RELEASE_NOTES.md`) and the website's download page (`src/routes/download.tsx` in mauritsE/fretlane-sync-magic) no longer tell Mac users to click "Open Anyway"; keep it that way.
 
 ## Windows
 
