@@ -150,10 +150,10 @@ def main():
     OUT.mkdir(exist_ok=True)
     W, H = 1080, 1350
     fb = [
-        slide(W, H, 'My tab player [writes songs] now', 'Fretlane 0.3: type the frets, hear every note as you go', 'score'),
+        slide(W, H, 'I built a [guitar tab player]', 'And now you can write songs in it: type the frets, hear every note', 'score'),
         slide(W, H, 'Guitar, bass and [drums]', 'One song, every part, and it all plays back together', 'drums'),
         slide(W, H, 'Stuck? Ask for a [bass line]', 'The riff assistant reads your whole song and writes the parts that fit', 'assistant', shot_w=420),
-        slide(W, H, 'Play along with [your own recordings]', 'Rehearsal takes, backing tracks, MP3 or WAV. Slow them down without the pitch going weird.', 'audio'),
+        slide(W, H, 'Play along with [your own recordings]', 'Rehearsal takes, backing tracks, MP3 or WAV. Slow them down, the pitch stays the same.', 'audio'),
         end_card(W, H, story=False),
     ]
     for i, im in enumerate(fb, 1):
@@ -162,7 +162,7 @@ def main():
     W, H = 1080, 1920
     story = [
         None,
-        slide(W, H, 'Now it [writes songs]', 'Type the frets, hear every note as you go', 'score', top=260),
+        slide(W, H, 'And you can [write songs] in it', 'Type the frets, hear every note as you go', 'score', top=260),
         slide(W, H, 'With [drums] too', 'And bass, ukulele, mandolin, banjo…', 'drums', top=260),
         slide(W, H, 'And an AI that writes the [bass line]', 'It reads the whole song first', 'assistant', shot_w=470, top=200),
         slide(W, H, 'Your band\'s rehearsal, [synced to the tab]', 'Drop in your own audio file and pin bar 1', 'audio', top=260),
@@ -171,8 +171,8 @@ def main():
     first = background(W, H)
     d = ImageDraw.Draw(first)
     icon(first, W // 2, 520, 220)
-    y = rich(d, 'Remember that [tab player] I built?', font(900, 104, display=True), W - 140, W / 2, 840, gap=1.1)
-    rich(d, 'It got a lot bigger →', font(600, 46), W - 160, W / 2, y + 50, color=MUTED)
+    y = rich(d, 'I built a [guitar tab player]', font(900, 104, display=True), W - 140, W / 2, 840, gap=1.1)
+    rich(d, 'The band plays along and the tab follows the music →', font(600, 46), W - 200, W / 2, y + 50, color=MUTED)
     story[0] = first
     for i, im in enumerate(story, 1):
         im.save(OUT / f'story-{i}.jpg', quality=92)

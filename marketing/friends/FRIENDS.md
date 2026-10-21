@@ -1,6 +1,6 @@
 # Tell your friends: Facebook post + Instagram story (Fretlane 0.3)
 
-Written in your voice: first person, plain, honest about limits. Change anything that doesn't sound like you.
+The copy follows the style of your own sent mail (see *Your voice*). Change anything that still doesn't sound like you.
 
 | File | For |
 | --- | --- |
@@ -15,61 +15,61 @@ Written in your voice: first person, plain, honest about limits. Change anything
 - **The riff assistant was not used.** The prompt "A bass line and drums that follow this riff" is typed into the box, but never sent. No AI answer is shown anywhere, because I can't reach Claude from here without your key. If you want to show a real answer, take a screenshot of one in your own signed-in app (see the checklist).
 - **Drawn:** the headlines, the backgrounds and the end card. Same colours and font (Inter) as the earlier Instagram kit.
 
+## Your voice
+Taken from your own sent mail (only the style; nothing from it is quoted or stored here):
+- Short. Say the point in the first sentence, then stop.
+- Plain facts and numbers, few adjectives, no hype words.
+- Ask directly: "Could you…?", "Would be great if…".
+- Warm but brief: "Top.", "Thanks!", an occasional ":)". No emoji.
+- No backstory or feelings you didn't state yourself.
+
 ## Facebook post
 
-Upload `fb-1` … `fb-5` as photos. Facebook doesn't hide posts with links in the body the way LinkedIn does, so the link can go in the text.
+Upload `fb-1` … `fb-5` as photos. Facebook doesn't hide posts with a link in the text, so it can go in the post.
 
-### English
+> For a while now I've been building Fretlane, a guitar tab player. You open a song, the band plays along and the tab follows the music.
+>
+> Version 0.3 is out and it does a lot more now:
+> - Write your own songs: guitar, bass and drums (ukulele, mandolin and banjo too)
+> - A riff assistant that writes a bass line or drums that fit your riff
+> - Play along with your own recordings, and slow them down if you want
+> - Export everything to Guitar Pro
+>
+> Playing along is free. Writing songs and the assistant are part of Fretlane Cloud, $5 a month.
+>
+> Would be great if you try it, or send it to someone who plays guitar. And if something doesn't work, let me know :)
+>
+> fretlane.app
 
-> If you missed it: for a while now I've been building Fretlane, a guitar tab player. You open a song and the whole band plays along, with the tab following the music. 🎸
->
-> I just released a big update, and it does a lot more now:
->
-> ✍️ **You can write your own songs in it.** Type the fret numbers and you hear every note as you type. Guitar, bass, ukulele, mandolin, banjo, and drums.
-> 🥁 Drums mattered to me in particular. I've been a drummer since I was 12, and I wrote most of my band songs in Guitar Pro with a guitar on my lap. This is the tool I wanted back then.
-> 🤖 **There's a riff assistant.** Select a few bars and ask for "heavier", or ask for a bass line and drums that fit what you wrote. It reads the whole song first. It doesn't always nail it, but "Try again" and undo are right there.
-> 🎧 **Play along with your own recordings:** an old rehearsal take, a backing track, any MP3 or WAV. Slow it down without the pitch changing, and the tab stays in sync.
-> ⤓ Everything exports to Guitar Pro.
-> 🍏 The Mac version is now signed by Apple, so you no longer have to click "Open Anyway".
->
-> Playing along stays free, and you don't need an account. Writing songs and the assistant come with Fretlane Cloud, from $5 a month. That also pays for the AI behind it.
->
-> I'd really appreciate it if you tried it, or passed it on to that one friend who's always playing guitar at parties. And tell me what's broken. Honestly, that helps me most.
->
-> 👉 fretlane.app
+### Short version (comment, WhatsApp, repost)
 
-### Nederlands
+> Fretlane 0.3 is out. You can now write your own songs in it, with guitar, bass and drums, and a riff assistant for when you're stuck. Playing along is free: fretlane.app
 
-> Voor wie het gemist heeft: ik ben al een tijdje bezig met Fretlane, een tab-speler voor gitaar. Je opent een nummer, de hele band speelt mee en de tab loopt mee met de muziek. 🎸
->
-> Er is net een flinke update uit, en hij kan nu een stuk meer:
->
-> ✍️ **Je kunt er je eigen nummers in schrijven.** Typ de fretnummers en je hoort elke noot meteen. Gitaar, bas, ukelele, mandoline, banjo, en drums.
-> 🥁 Die drums waren voor mij belangrijk. Ik drum sinds mijn twaalfde, en schreef de nummers voor mijn bands in Guitar Pro met een gitaar op schoot. Dit is de tool die ik toen had willen hebben.
-> 🤖 **Er zit een riff-assistent in.** Selecteer een paar maten en vraag om "zwaarder", of vraag om een baslijn en drums die passen bij wat je al hebt. Hij leest eerst het hele nummer. Het is niet altijd raak, maar "Try again" en ongedaan maken zitten er gewoon in.
-> 🎧 **Speel mee met je eigen opnames:** een oude repetitie-opname, een backing track, elke MP3 of WAV. Langzamer afspelen zonder dat de toonhoogte verandert, en de tab blijft synchroon.
-> ⤓ Alles kun je exporteren naar Guitar Pro.
-> 🍏 De Mac-versie is nu ondertekend door Apple, dus geen "Toch openen" meer.
->
-> Meespelen blijft gratis, zonder account. Nummers schrijven en de assistent zitten in Fretlane Cloud, vanaf $5 per maand. Daarmee betaal ik ook de AI erachter.
->
-> Ik zou het heel tof vinden als je het probeert, of het doorstuurt naar die ene vriend die op elk feestje de gitaar pakt. En laat me weten wat er stuk is. Eerlijk gezegd heb ik daar het meeste aan.
->
-> 👉 fretlane.app
+## Instagram
 
-### Short version (for a comment, WhatsApp, or a repost)
+This is your first post about Fretlane on Instagram, so it introduces Fretlane instead of announcing an update. Post the feed post and the story on the same day: the story sends people to the link, the post stays on your profile.
 
-> My tab player Fretlane writes songs now: type the frets, add drums and bass, and ask the riff assistant for a part when you're stuck. Playing along with your own recordings works too. Free to play along, writing from $5/month. fretlane.app 🎸
+### Feed post
 
-## Instagram story
+Upload `fb-1` … `fb-5` as one carousel post. Instagram doesn't make links in captions clickable, so put `https://fretlane.app` in your bio (Edit profile → Links) for as long as you're promoting it.
 
-Post the six frames in order. The text on the images is in English; the stickers can be in whatever language your followers use.
+> I built a guitar tab player: Fretlane. You open a song, the band plays along and the tab follows the music.
+>
+> You can also write your own songs in it, with guitar, bass and drums, and a riff assistant that writes a part that fits. And you can play along with your own recordings.
+>
+> Playing along is free. Link in bio. If something doesn't work, let me know :)
+>
+> #guitar #guitartabs #songwriting
+
+### Story
+
+Post the six frames in order.
 
 | Frame | On the image | Add in Instagram |
 | --- | --- | --- |
-| `story-1` | "Remember that tab player I built?" | Nothing, or a short clip of you playing a riff as the background audio |
-| `story-2` | "Now it writes songs" (editor, guitar track) | Nothing |
-| `story-3` | "With drums too" (drum track) | **Poll** in the empty space at the bottom: "Do you play? 🎸" → "Yes" / "I used to" |
+| `story-1` | "I built a guitar tab player" | Nothing, or a short clip of you playing a riff as the background audio |
+| `story-2` | "And you can write songs in it" (editor, guitar track) | Nothing |
+| `story-3` | "With drums too" (drum track) | **Poll** in the empty space at the bottom: "Do you play guitar?" → "Yes" / "I used to" |
 | `story-4` | "And an AI that writes the bass line" | **Question** sticker: "What should it write next?" |
 | `story-5` | "Your band's rehearsal, synced to the tab" | Nothing |
 | `story-6` | "Free download at fretlane.app" | **Link** sticker → `https://fretlane.app` where it says "Link sticker goes here ↓" |
@@ -80,7 +80,6 @@ The poll and question stickers matter more than they seem: replies come in as DM
 - **Open `fretlane.app` on your phone.** The story's link sticker sends people there, and most of them will be on a phone. The desktop app doesn't run on phones, so check that the page explains that and offers the online player or `/try`.
 - **"Mac version is now signed by Apple"**: true from v0.3.3 (released 20 October). If anyone still gets a warning, they downloaded an older version.
 - **Pricing**: the post says "from $5 a month", which matches the site today ($5 / $25 / $50 for 96 / 480 / 1,152 assistant bars). Update both texts if that changes.
-- **The drummer and Guitar Pro lines** come from what you've told me about yourself. Cut them if they feel too personal for Facebook.
 - **Want a real AI answer in the visuals?** Ask the assistant something in your own app, take a screenshot when the new bars are in, and send it to me. I'll swap it into `story-4` / `fb-3`. Keep the first answer, even if it's not perfect.
 
 ## Rebuild
