@@ -3,6 +3,15 @@ import type { MediaSearchResponse, MediaSource, PublicSettings } from '../shared
 import type { CloudStatus, CloudSyncStatus, CloudTabSummary } from '../shared/cloud.ts';
 import type { PremiumStatus } from '../shared/premium.ts';
 import type { AssistantStatus, AssistantUsage, RiffRequest } from '../shared/editor/assistant.ts';
+import { RIFF_STREAM_TYPE, isRiffStream, readRiffEvents, type RiffEvent } from '../shared/editor/riffStream.ts';
+
+/** The songwriting assistant's answer: Claude's riff as raw JSON, to be fitted with riffFromAnswer(). */
+export interface RiffAnswer {
+  riff: unknown;
+  via: 'own-key' | 'cloud';
+  usage?: AssistantUsage;
+  notice?: string;
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
@@ -41,11 +50,31 @@ export const api = {
   importCloudTab: (id: string) => request<Song>(`/api/cloud/tabs/${encodeURIComponent(id)}/import`, { method: 'POST' }),
   /** Fretlane Premium (the tab editor). `refresh` asks the website again instead of the cached answer. */
   premium: (refresh = false) => request<PremiumStatus>('/api/premium', refresh ? { method: 'POST' } : undefined),
-  /** The songwriting assistant: Claude's riff as raw JSON, to be fitted with riffToBars(). */
   /** Whether the songwriting assistant can be used, with the plan's bars this month. */
   assistantStatus: () => request<AssistantStatus>('/api/assistant/status'),
-  riffAssistant: (req: RiffRequest, signal?: AbortSignal) =>
-    request<{ riff: unknown; via: 'own-key' | 'cloud'; usage?: AssistantUsage; notice?: string }>('/api/assistant/riff', { method: 'POST', body: JSON.stringify(req), signal }),
+  /**
+   * Asks the songwriting assistant. `onEvent` gets Claude's answer as it is written (text and
+   * restarts, see shared/editor/riffStream.ts); the promise resolves with the riff to apply.
+   */
+  async riffAssistant(req: RiffRequest, signal?: AbortSignal, onEvent?: (e: RiffEvent) => void): Promise<RiffAnswer> {
+    const res = await fetch('/api/assistant/riff', {
+      method: 'POST',
+      body: JSON.stringify(req),
+      headers: { 'content-type': 'application/json', accept: `${RIFF_STREAM_TYPE}, application/json` },
+      signal,
+    });
+    if (!res.ok || !res.body || !isRiffStream(res.headers.get('content-type'))) {
+      const body = (await res.json().catch(() => ({}))) as RiffAnswer & { error?: string };
+      if (!res.ok) throw new Error(body.error ?? `${res.status} ${res.statusText}`);
+      return body;
+    }
+    for await (const e of readRiffEvents(res.body)) {
+      if (e.type === 'done') return { riff: e.riff, via: e.via ?? 'cloud', ...(e.usage ? { usage: e.usage } : {}), ...(e.notice ? { notice: e.notice } : {}) };
+      if (e.type === 'error') throw new Error(e.error);
+      onEvent?.(e);
+    }
+    throw new Error('The songwriting assistant stopped before the riff was finished. Try again.');
+  },
   /** Saves a written song's tab (alphaTex). `keepalive` lets the save finish while the page closes. */
   async saveTab(id: string, tex: string, keepalive = false): Promise<Song> {
     const res = await fetch(`/api/songs/${encodeURIComponent(id)}/tab`, {

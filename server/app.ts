@@ -8,6 +8,7 @@ import { FretlaneCloud } from './cloud.ts';
 import { RiffAssistant } from './assistant.ts';
 import { CloudSync } from './cloudSync.ts';
 import type { RiffRequest } from '../shared/editor/assistant.ts';
+import { RIFF_STREAM_TYPE, isRiffStream, riffEventLine, type RiffEvent } from '../shared/editor/riffStream.ts';
 import { cloudTabToSongInput, summarizeCloudTab, type CloudConfig } from '../shared/cloud.ts';
 import type { PremiumStatus } from '../shared/premium.ts';
 import type { NewSongInput, SongPatch } from '../shared/types.ts';
@@ -213,12 +214,40 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
     if (parts[1] === 'assistant' && parts[2] === 'status' && method === 'GET') return send(res, 200, await assistant.status());
     if (parts[1] === 'assistant' && parts[2] === 'riff' && method === 'POST') {
       await requirePremium();
-      return send(res, 200, await assistant.riff(await readJson<RiffRequest>(req)));
+      const body = await readJson<RiffRequest>(req);
+      if (!isRiffStream(req.headers.accept)) return send(res, 200, await assistant.riff(body));
+      return streamRiff(res, body);
     }
 
     // `app` lets tools (and the smoke test) recognise this server.
     if (parts[1] === 'health') return send(res, 200, { ok: true, app: APP_ID, library: opts.libraryDir });
     throw new HttpError(404, 'Unknown API route');
+  }
+
+  /**
+   * The assistant's answer as NDJSON events (shared/editor/riffStream.ts), so the editor shows
+   * Claude writing. Errors known up front still get their status; later ones arrive as an event.
+   * Closing the request (the editor's Stop) stops the Claude call.
+   */
+  async function streamRiff(res: http.ServerResponse, body: RiffRequest): Promise<void> {
+    assistant.check(body);
+    const stop = new AbortController();
+    res.on('close', () => {
+      if (!res.writableFinished) stop.abort();
+    });
+    res.writeHead(200, { 'content-type': `${RIFF_STREAM_TYPE}; charset=utf-8`, 'cache-control': 'no-store', 'x-accel-buffering': 'no' });
+    res.flushHeaders();
+    const write = (e: RiffEvent) => {
+      if (!res.destroyed) res.write(riffEventLine(e));
+    };
+    try {
+      write({ type: 'done', ...(await assistant.riff(body, write, stop.signal)) });
+    } catch (err) {
+      const status = err instanceof HttpError ? err.status : 500;
+      if (status === 500) console.error(err);
+      write({ type: 'error', status, error: (err as Error).message });
+    }
+    res.end();
   }
 
   async function handleCloud(req: http.IncomingMessage, res: http.ServerResponse, url: URL, parts: string[], method: string): Promise<void> {

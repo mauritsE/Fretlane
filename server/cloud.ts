@@ -23,6 +23,7 @@ import {
 } from '../shared/cloud.ts';
 import { HttpError } from './library.ts';
 import type { AssistantStatus, AssistantUsage, RiffRequest } from '../shared/editor/assistant.ts';
+import { RIFF_STREAM_TYPE, isRiffStream, readRiffEvents, type RiffEvent } from '../shared/editor/riffStream.ts';
 import { decidePremium, entitlementFrom, type EntitlementCheck, type PremiumStatus, type SubscriptionRow } from '../shared/premium.ts';
 
 const TIMEOUT_MS = 15_000;
@@ -267,15 +268,42 @@ export class FretlaneCloud {
    * with its key, after checking the plan and a daily limit. Returns Claude's riff (validated by the
    * caller with riffToBars()). The website answers errors as `{ error }` with a status that maps to
    * ours: 401 signed out, 402 no plan, 422 Claude declined, 429 daily limit, 503 not set up.
+   * A website that streams sends Claude's answer as it is written; `onEvent` gets it, and errors
+   * after the stream started come as an `error` event with the same statuses.
    */
-  async riffAssistant(req: RiffRequest): Promise<{ riff: unknown; usage?: AssistantUsage; notice?: string }> {
+  async riffAssistant(req: RiffRequest, onEvent?: (e: RiffEvent) => void): Promise<{ riff: unknown; usage?: AssistantUsage; notice?: string }> {
     const url = new URL('/api/public/app/riff-assistant', this.config.siteUrl).toString();
-    const res = await this.authed(url, { method: 'POST', body: JSON.stringify(req), timeoutMs: ASSISTANT_TIMEOUT_MS, passErrors: true });
+    const res = await this.authed(url, {
+      method: 'POST',
+      body: JSON.stringify(req),
+      // Asks for Claude's answer as it is written; a website from before streaming answers JSON.
+      headers: { accept: `${RIFF_STREAM_TYPE}, application/json` },
+      timeoutMs: ASSISTANT_TIMEOUT_MS,
+      passErrors: true,
+    });
+    if (res.ok && res.body && isRiffStream(res.headers.get('content-type'))) return this.riffFromStream(res.body, onEvent);
     const body = (await res.json().catch(() => ({}))) as { riff?: unknown; usage?: AssistantUsage; notice?: string; error?: string };
     // The plan's monthly bars come along: the website charges what Claude wrote.
     if (res.ok && body.riff) return { riff: body.riff, ...(body.usage ? { usage: body.usage } : {}), ...(body.notice ? { notice: body.notice } : {}) };
     const status = [400, 401, 402, 422, 429, 503].includes(res.status) ? res.status : 502;
     throw new HttpError(status, body.error ?? `The songwriting assistant answered ${res.status}.`);
+  }
+
+  private async riffFromStream(body: ReadableStream<Uint8Array>, onEvent?: (e: RiffEvent) => void): Promise<{ riff: unknown; usage?: AssistantUsage; notice?: string }> {
+    try {
+      for await (const e of readRiffEvents(body)) {
+        if (e.type === 'done') {
+          if (!e.riff) break;
+          return { riff: e.riff, ...(e.usage ? { usage: e.usage } : {}), ...(e.notice ? { notice: e.notice } : {}) };
+        }
+        if (e.type === 'error') throw new HttpError([400, 401, 402, 422, 429, 503].includes(e.status) ? e.status : 502, e.error);
+        onEvent?.(e);
+      }
+    } catch (err) {
+      if (err instanceof HttpError) throw err;
+      throw new HttpError(502, 'The connection to Fretlane Cloud broke off before the riff was finished. Try again.');
+    }
+    throw new HttpError(502, 'The songwriting assistant stopped before the riff was finished. Try again.');
   }
 
   /** The website's plans page. */

@@ -433,6 +433,8 @@ table.keys td { color: var(--muted); padding: 3px 0; }
 .ai-result { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 13px; }
 .ai-result p { margin: 0 0 6px; }
 .ai-thinking { display: flex; gap: 8px; align-items: center; color: var(--muted); }
+.ai-progress { margin: 0; padding-left: 18px; color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.ai-progress:empty { display: none; }
 .spinner.small { width: 14px; height: 14px; border-width: 2px; }
 .ai-result .ai-row button { padding: 2px 9px; font-size: 12.5px; }
 .ai-panel.locked .ai-prompt, .ai-panel.locked .ai-ideas, .ai-panel.locked .ai-go, .ai-panel.locked .ai-mode { opacity: 0.45; }
