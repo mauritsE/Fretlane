@@ -466,10 +466,19 @@ await page.keyboard.press('Space');
 await page.click('.sidebar .add-track');
 await page.waitForSelector('dialog form');
 await page.selectOption('dialog form select >> nth=0', 'bass');
+// Tuning: typed note names pick the low octave and the matching preset, ▼ ½ tunes every string down.
+await page.fill('dialog .tuning-typed', 'B E A D');
+check((await page.inputValue('dialog .tuning-field > select')) === 'bass-b-standard', 'typing "B E A D" selects the B standard bass preset');
+await page.click('dialog .tuning-buttons button:has-text("▼")');
+check(
+  (await page.inputValue('dialog .tuning-field > select')) === 'custom' && (await page.inputValue('dialog .tuning-typed')) === 'Bb Eb Ab C#',
+  '▼ ½ tunes every string a half step down and shows it as a custom tuning',
+);
+await page.screenshot({ path: path.join(SHOTS, 'editor-3-tuning.png') });
 await page.click('dialog button[type="submit"]');
 await rendered();
 s = await ed();
-check(s.doc.tracks.length === 2 && s.doc.tracks[1].kind === 'bass' && s.doc.tracks[1].tuning.length === 4 && s.cursor.track === 1, '+ Track adds a bass track and switches to it');
+check(s.doc.tracks.length === 2 && s.doc.tracks[1].kind === 'bass' && s.doc.tracks[1].tuning.join() === '37,32,27,22' && s.cursor.track === 1, '+ Track adds a bass track in the picked tuning and switches to it');
 await page.keyboard.press('0');
 await rendered();
 check((await ed()).doc.bars[0].tracks[1][0].notes[0]?.string === 4, 'typing works on the bass track (starts on its lowest string)');

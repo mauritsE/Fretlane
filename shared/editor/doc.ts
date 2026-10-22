@@ -237,15 +237,30 @@ export interface TuningPreset {
 
 export const TUNING_PRESETS: TuningPreset[] = [
   { id: 'guitar-standard', label: 'Standard (E A D G B E)', kind: 'guitar', tuning: [64, 59, 55, 50, 45, 40] },
-  { id: 'guitar-drop-d', label: 'Drop D (D A D G B E)', kind: 'guitar', tuning: [64, 59, 55, 50, 45, 38] },
   { id: 'guitar-half-down', label: 'Half step down (Eb Ab Db Gb Bb Eb)', kind: 'guitar', tuning: [63, 58, 54, 49, 44, 39] },
+  { id: 'guitar-drop-d', label: 'Drop D (D A D G B E)', kind: 'guitar', tuning: [64, 59, 55, 50, 45, 38] },
   { id: 'guitar-d-standard', label: 'D standard (D G C F A D)', kind: 'guitar', tuning: [62, 57, 53, 48, 43, 38] },
+  { id: 'guitar-drop-c-sharp', label: 'Drop C# (C# Ab Db Gb Bb Eb)', kind: 'guitar', tuning: [63, 58, 54, 49, 44, 37] },
+  { id: 'guitar-drop-c', label: 'Drop C (C G C F A D)', kind: 'guitar', tuning: [62, 57, 53, 48, 43, 36] },
+  { id: 'guitar-c-standard', label: 'C standard (C F Bb Eb G C)', kind: 'guitar', tuning: [60, 55, 51, 46, 41, 36] },
+  { id: 'guitar-drop-b', label: 'Drop B (B F# B E Ab C#)', kind: 'guitar', tuning: [61, 56, 52, 47, 42, 35] },
+  { id: 'guitar-b-standard', label: 'B standard (B E A D F# B)', kind: 'guitar', tuning: [59, 54, 50, 45, 40, 35] },
+  { id: 'guitar-drop-a', label: 'Drop A (A E A D F# B)', kind: 'guitar', tuning: [59, 54, 50, 45, 40, 33] },
   { id: 'guitar-dadgad', label: 'DADGAD', kind: 'guitar', tuning: [62, 57, 55, 50, 45, 38] },
   { id: 'guitar-open-g', label: 'Open G (D G D G B D)', kind: 'guitar', tuning: [62, 59, 55, 50, 43, 38] },
+  { id: 'guitar-open-d', label: 'Open D (D A D F# A D)', kind: 'guitar', tuning: [62, 57, 54, 50, 45, 38] },
   { id: 'guitar-7-standard', label: '7-string standard (B E A D G B E)', kind: 'guitar', tuning: [64, 59, 55, 50, 45, 40, 35] },
+  { id: 'guitar-7-drop-a', label: '7-string drop A (A E A D G B E)', kind: 'guitar', tuning: [64, 59, 55, 50, 45, 40, 33] },
+  { id: 'guitar-8-standard', label: '8-string standard (F# B E A D G B E)', kind: 'guitar', tuning: [64, 59, 55, 50, 45, 40, 35, 30] },
   { id: 'bass-standard', label: 'Standard (E A D G)', kind: 'bass', tuning: [43, 38, 33, 28] },
   { id: 'bass-drop-d', label: 'Drop D (D A D G)', kind: 'bass', tuning: [43, 38, 33, 26] },
+  { id: 'bass-d-standard', label: 'D standard (D G C F)', kind: 'bass', tuning: [41, 36, 31, 26] },
+  { id: 'bass-drop-c', label: 'Drop C (C G C F)', kind: 'bass', tuning: [41, 36, 31, 24] },
+  { id: 'bass-b-standard', label: 'B standard (B E A D)', kind: 'bass', tuning: [38, 33, 28, 23] },
+  { id: 'bass-drop-a', label: 'Drop A (A E A D)', kind: 'bass', tuning: [38, 33, 28, 21] },
   { id: 'bass-5-standard', label: '5-string (B E A D G)', kind: 'bass', tuning: [43, 38, 33, 28, 23] },
+  { id: 'bass-5-drop-a', label: '5-string drop A (A E A D G)', kind: 'bass', tuning: [43, 38, 33, 28, 21] },
+  { id: 'bass-6-standard', label: '6-string (B E A D G C)', kind: 'bass', tuning: [48, 43, 38, 33, 28, 23] },
   { id: 'drum-kit', label: 'Drum kit', kind: 'drums', tuning: DRUM_TUNING },
   // Ukulele and 5-string banjo are re-entrant: the string at the bottom of the tab is not the lowest.
   { id: 'ukulele-standard', label: 'Standard (G C E A)', kind: 'ukulele', tuning: [69, 64, 60, 67] },
@@ -256,6 +271,43 @@ export const TUNING_PRESETS: TuningPreset[] = [
   { id: 'banjo-double-c', label: 'Double C (g C G C D)', kind: 'banjo', tuning: [62, 60, 55, 48, 67] },
   { id: 'banjo-tenor', label: 'Tenor (C G D A)', kind: 'banjo', tuning: [69, 62, 55, 48] },
 ];
+
+/** The preset with exactly this tuning (highest string first), if any. */
+export function findTuningPreset(kind: TrackKind, tuning: number[]): TuningPreset | undefined {
+  return TUNING_PRESETS.find((p) => p.kind === kind && p.tuning.join() === tuning.join());
+}
+
+export const MIN_STRINGS = 4;
+export const MAX_STRINGS = 8;
+
+/** Lowest and highest pitch a string of this instrument can sensibly be tuned to (MIDI). */
+export function stringPitchRange(kind: TrackKind): [number, number] {
+  if (kind === 'bass') return [12, 60]; // C0 (subcontra) to C4 (piccolo bass)
+  if (kind === 'ukulele' || kind === 'banjo') return [36, 76];
+  if (kind === 'mandolin') return [43, 84];
+  return [21, 72]; // guitar: A0 (9-string range) to C5
+}
+
+/** Every string moved by `semitones` (negative = lower), clamped to the instrument's range. */
+export function shiftTuning(tuning: number[], semitones: number, kind: TrackKind): number[] {
+  const [lo, hi] = stringPitchRange(kind);
+  if (tuning.some((p) => p + semitones < lo || p + semitones > hi)) return [...tuning];
+  return tuning.map((p) => p + semitones);
+}
+
+/**
+ * Adds a string below the lowest one, a fourth down as on 7-string guitars and 5-string basses,
+ * or removes the lowest string. Tunings are highest string first, so the low string is the last.
+ */
+export function addLowString(tuning: number[], kind: TrackKind): number[] {
+  if (tuning.length >= MAX_STRINGS) return [...tuning];
+  const low = Math.max(stringPitchRange(kind)[0], tuning[tuning.length - 1] - 5);
+  return [...tuning, low];
+}
+
+export function removeLowString(tuning: number[]): number[] {
+  return tuning.length <= MIN_STRINGS ? [...tuning] : tuning.slice(0, -1);
+}
 
 export const DEFAULT_SOUND: Record<TrackKind, string> = {
   guitar: 'electricguitarclean',
@@ -303,18 +355,31 @@ export function pitchName(midi: number): string {
 }
 
 /**
+ * Where the lowest string usually sits for this instrument and number of strings (MIDI): E2 on a
+ * 6-string guitar, B1 on a 7-string, F#1 on an 8-string, E1 on a 4-string bass, B0 on a 5- or 6-string.
+ */
+function usualLowString(kind: TrackKind, strings: number): number {
+  if (kind === 'bass') return strings >= 5 ? 23 : 28;
+  if (kind === 'guitar') return strings >= 8 ? 30 : strings === 7 ? 35 : 40;
+  return kind === 'mandolin' ? 55 : 48;
+}
+
+/**
  * Parses a custom tuning typed by the user, lowest string first as guitarists say it
- * ("D A D G B E", "B1 E2 A2 D3 G3"). Notes without an octave are placed rising from a sensible
- * lowest string for the instrument. Returns MIDI pitches highest string first, or null.
+ * ("D A D G B E", "B1 E2 A2 D3 G3"). Without an octave, the lowest string is put in the octave
+ * that reaches from 10 semitones below the usual low string to 1 above it (so "C G C F A D" is
+ * drop C and "A E A D F# B" drop A, not an octave up), and each next string is the first such
+ * note above the one before. Returns MIDI pitches highest string first, or null.
  */
 export function parseTuning(text: string, kind: TrackKind): number[] | null {
   if (kind === 'drums') return null;
   const parts = text.trim().split(/[\s,]+/).filter(Boolean);
-  if (parts.length < 4 || parts.length > 8) return null;
+  if (parts.length < MIN_STRINGS || parts.length > MAX_STRINGS) return null;
   const pcs: Record<string, number> = { c: 0, d: 2, e: 4, f: 5, g: 7, a: 9, b: 11 };
   const out: number[] = [];
-  // A0 / A1 / G3 / C3: nothing lower is a sensible lowest string.
-  let floor = kind === 'bass' ? 21 : kind === 'mandolin' ? 55 : kind === 'ukulele' || kind === 'banjo' ? 48 : 33;
+  // Ukulele, mandolin and banjo keep the old rule: the lowest string rises from G3 / C3.
+  const reach = kind === 'guitar' || kind === 'bass' ? 10 : 0;
+  let floor = usualLowString(kind, parts.length) - reach;
   for (const part of parts) {
     const m = /^([A-Ga-g])(#|b)?(-?\d)?$/.exec(part);
     if (!m) return null;
