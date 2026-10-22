@@ -91,7 +91,15 @@ function createWindow(url: string): void {
   });
 
   // Links that leave the app (e.g. "Watch on YouTube") open in the normal browser.
-  const isInternal = (target: string) => target.startsWith(url);
+  // Same origin, not a prefix match: "http://localhost:5173.evil.com" starts with the app's URL too.
+  const appOrigin = new URL(url).origin;
+  const isInternal = (target: string) => {
+    try {
+      return new URL(target).origin === appOrigin;
+    } catch {
+      return false;
+    }
+  };
   win.webContents.setWindowOpenHandler(({ url: target }) => {
     if (/^https?:/.test(target)) void shell.openExternal(target);
     return { action: 'deny' };

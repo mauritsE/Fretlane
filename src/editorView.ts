@@ -1110,7 +1110,7 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
       );
       if (s.access === 'signed-out') {
         // A real link (not window.open after an await) so pop-up blockers allow it.
-        api.cloudLogin(location.origin).then(({ url }) => {
+        api.cloudLogin().then(({ url }) => {
           if (aiLock.dataset['access'] === 'signed-out') aiLock.querySelector('.ai-row')?.prepend(watching(h('a.button.primary', { href: url, target: '_blank', rel: 'noopener' }, 'Sign in')));
           upgrade.classList.remove('primary');
         }, () => undefined);

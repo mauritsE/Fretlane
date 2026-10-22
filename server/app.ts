@@ -13,6 +13,7 @@ import type { PremiumStatus } from '../shared/premium.ts';
 import type { NewSongInput, SongPatch } from '../shared/types.ts';
 import { APP_ID, APP_NAME } from '../shared/brand.ts';
 import { audioFormatOfFile, audioMime, parseByteRange } from '../shared/audio.ts';
+import { refuseRequest } from '../shared/localGuard.ts';
 
 const MAX_BODY = 30 * 1024 * 1024;
 
@@ -43,7 +44,8 @@ export function dirAssets(dir: string): StaticAssets {
   return {
     async get(rel) {
       const file = path.join(dir, rel);
-      if (!file.startsWith(dir)) return null;
+      const inside = path.relative(dir, file);
+      if (!inside || inside.startsWith('..') || path.isAbsolute(inside)) return null;
       try {
         const stat = await fs.stat(file);
         return stat.isFile() ? new Uint8Array(await fs.readFile(file)) : null;
@@ -151,7 +153,13 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
         return;
       } else if (parts[3] === 'audio') {
         if (method === 'PUT') {
-          const name = decodeURIComponent(String(req.headers['x-file-name'] ?? 'audio'));
+          const raw = String(req.headers['x-file-name'] ?? 'audio');
+          let name = raw;
+          try {
+            name = decodeURIComponent(raw);
+          } catch {
+            /* not percent-encoded: keep it as sent */
+          }
           return send(res, 200, await library.setAudio(id, name, req));
         }
         if (method === 'GET' || method === 'HEAD') {
@@ -225,9 +233,8 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
     const [what, id, action] = parts;
     if (what === 'status' && method === 'GET') return send(res, 200, cloud.status());
     if (what === 'login' && method === 'POST') {
-      // The UI tells us the origin it was loaded from; the browser comes back to that same server.
-      const { origin } = await readJson<{ origin?: string }>(req);
-      return send(res, 200, cloud.startLogin(`${origin ?? ''}/api/cloud/callback`));
+      // The browser comes back to the server the UI was loaded from (the guard checked the Host).
+      return send(res, 200, cloud.startLogin(`http://${req.headers.host}/api/cloud/callback`));
     }
     if (what === 'callback' && method === 'GET') {
       // Opened in the user's web browser by the website, not by the app: answer with a page.
@@ -329,8 +336,15 @@ export async function startServer(opts: ServerOptions): Promise<RunningServer> {
   }
 
   const server = http.createServer(async (req, res) => {
-    const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
+    const url = new URL(req.url ?? '/', 'http://localhost');
     try {
+      const refused = refuseRequest({
+        path: url.pathname,
+        host: req.headers.host,
+        origin: req.headers.origin,
+        fetchSite: req.headers['sec-fetch-site'] as string | undefined,
+      });
+      if (refused) throw new HttpError(403, refused);
       if (url.pathname.startsWith('/api/')) await handleApi(req, res, url);
       else if (opts.assets) await serveStatic(res, url, opts.assets);
       else throw new HttpError(404, 'In dev mode the UI is served by Vite on http://localhost:5173');

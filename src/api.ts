@@ -34,7 +34,7 @@ export const api = {
   setSpotifyCredentials: (spotifyClientId: string, spotifyClientSecret: string) =>
     request<PublicSettings>('/api/settings', { method: 'PUT', body: JSON.stringify({ spotifyClientId, spotifyClientSecret }) }),
   cloudStatus: () => request<CloudStatus>('/api/cloud/status'),
-  cloudLogin: (origin: string) => request<{ url: string }>('/api/cloud/login', { method: 'POST', body: JSON.stringify({ origin }) }),
+  cloudLogin: () => request<{ url: string }>('/api/cloud/login', { method: 'POST', body: '{}' }),
   cloudLogout: () => request<CloudStatus>('/api/cloud/logout', { method: 'POST' }),
   cloudTabs: () => request<CloudTabSummary[]>('/api/cloud/tabs'),
   cloudSync: (songId: string) => request<CloudSyncStatus>(`/api/cloud/sync/${encodeURIComponent(songId)}`),
