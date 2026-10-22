@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { extractPreText } from '../server/fetchTab.ts';
+import { extractPreText, fetchTab, isPublicAddress } from '../server/fetchTab.ts';
 
 describe('extractPreText', () => {
   it('returns empty string when there is no <pre>', () => {
@@ -20,5 +20,22 @@ describe('extractPreText', () => {
   });
   it('keeps newlines in multi-line content', () => {
     expect(extractPreText('<pre>a\nb\nc</pre>')).toBe('a\nb\nc');
+  });
+});
+
+describe('isPublicAddress', () => {
+  it('accepts internet addresses', () => {
+    for (const ip of ['8.8.8.8', '104.16.0.1', '2606:4700::1111']) expect(isPublicAddress(ip), ip).toBe(true);
+  });
+  it('refuses this computer, the local network, cloud metadata and IPv4-mapped forms', () => {
+    for (const ip of ['127.0.0.1', '127.9.9.9', '0.0.0.0', '10.1.2.3', '172.20.0.1', '192.168.1.1', '169.254.169.254', '100.64.0.1', '::1', '::', 'fd00::1', 'fe80::1', '::ffff:7f00:1', '::ffff:192.168.0.1', 'not-an-ip'])
+      expect(isPublicAddress(ip), ip).toBe(false);
+  });
+});
+
+describe('fetchTab', () => {
+  it('refuses loopback and private hosts before connecting', async () => {
+    for (const url of ['http://127.0.0.1:5173/api/health', 'http://localhost/x.gp', 'http://[::1]/x', 'http://0x7f000001/x', 'http://169.254.169.254/latest/meta-data/', 'http://192.168.1.1/tab.txt'])
+      await expect(fetchTab(url, 1000), url).rejects.toMatchObject({ status: 400 });
   });
 });

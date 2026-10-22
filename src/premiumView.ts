@@ -95,7 +95,7 @@ export function openPremiumDialog(first: PremiumStatus): Promise<boolean> {
       if (s.reason === 'signed-out') {
         let url = '';
         try {
-          ({ url } = await api.cloudLogin(location.origin));
+          ({ url } = await api.cloudLogin());
         } catch (err) {
           body.replaceChildren(h('p.form-status.error', {}, (err as Error).message));
           return;

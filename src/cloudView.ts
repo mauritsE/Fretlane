@@ -94,7 +94,7 @@ export function openCloudDialog(): void {
   async function showSignIn(status: CloudStatus): Promise<void> {
     let url: string;
     try {
-      ({ url } = await api.cloudLogin(location.origin));
+      ({ url } = await api.cloudLogin());
     } catch (err) {
       return message((err as Error).message, 'form-status.error');
     }
