@@ -117,8 +117,9 @@ export function parsePartialJson(text: string): unknown {
   }
 }
 
-/** How far Claude has got with a riff: the explanation so far, and each part's bars. */
+/** How far Claude has got with a riff: a question instead of one, the explanation so far, and each part's bars. */
 export interface RiffProgress {
+  question: string;
   explanation: string;
   parts: { name: string; instrument: string; bars: number }[];
 }
@@ -128,6 +129,7 @@ export function riffProgress(text: string): RiffProgress {
   const o = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
   const parts = Array.isArray(o['parts']) ? (o['parts'] as unknown[]) : [];
   return {
+    question: typeof o['question'] === 'string' ? o['question'] : '',
     explanation: typeof o['explanation'] === 'string' ? o['explanation'] : '',
     parts: parts.map((p) => {
       const q = p && typeof p === 'object' ? (p as Record<string, unknown>) : {};

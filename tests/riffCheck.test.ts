@@ -66,6 +66,14 @@ describe('riff checks', () => {
     expect(riffProblems(riff(part(1, 'guitar', 'Guitar', [passing, goodBar()])), 2, ctx())).toEqual([]);
     const dead = eighths([1, 1, 1, 1, 1, 1, 1, 1].map((f) => [n(6, f, ['dead'])]));
     expect(riffProblems(riff(part(1, 'guitar', 'Guitar', [dead, goodBar()])), 2, ctx())).toEqual([]);
+    // With a style named, blue notes and chromatic runs are expected: only a mostly out-of-key part is flagged.
+    const styled = (...parts: unknown[]) => ({ ...riff(...parts), style: 'chromatic thrash' });
+    expect(riffProblems(styled(part(1, 'guitar', 'Guitar', [chromatic, goodBar()])), 2, ctx())).toEqual([]);
+    expect(riffProblems(styled(part(1, 'guitar', 'Guitar', [chromatic, chromatic])), 2, ctx())).toEqual([
+      "Guitar: 12 of 16 notes are outside E minor, the song's key: more than the style needs. Keep the blue notes and chromatic runs that make the style, and bring the rest back into the key.",
+    ]);
+    // A question has no parts to check, even if it came with some.
+    expect(riffProblems({ ...riff(part(1, 'guitar', 'Guitar', [chromatic])), question: 'Which era?' }, 2, ctx())).toEqual([]);
     // Without a key (or a check context, from an older app), only what needs none is checked.
     expect(riffProblems(riff(part(1, 'guitar', 'Guitar', [chromatic, goodBar()])), 2, ctx({ key: null }))).toEqual([]);
     expect(riffProblems(riff(part(1, 'guitar', 'Guitar', [eighths([[n(6, 0)]]), goodBar()])), 2)).toEqual([]);

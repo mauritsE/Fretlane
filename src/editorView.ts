@@ -31,6 +31,7 @@ import {
   usageMeter,
   describeWritten,
   riffFromAnswer,
+  riffQuestion,
   type AssistantStatus,
   type AssistantUsage,
   type RiffRequest,
@@ -47,6 +48,8 @@ import { ensurePremium } from './premiumView.ts';
 import { makeEditableCopy, soundSelect, tuningField } from './writeDialog.ts';
 
 type Cleanup = () => void;
+/** What buildRiffRequest is asked for: improve the selected bars, or write new ones from a bar. */
+type RiffOpts = Parameters<typeof buildRiffRequest>[2];
 
 /** Copied bars, kept while the app is open so they can be pasted into another song too. */
 let clipboard: DocBar[] = [];
@@ -1040,6 +1043,11 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
   let aiWatch: number | undefined;
   /** The last riff put in the song, for "Try again" and "Undo". `doc` is the document right after it. */
   let lastAi: { request: RiffRequest; target: RiffTarget; cursor: Cursor; doc: SongDoc } | null = null;
+  /**
+   * Claude asked a question instead of writing (the style was unclear): the request it was about,
+   * until the guitarist answers it, lets Claude decide or drops it. `opts.prompt` is their first words.
+   */
+  let aiAsked: { track: number; opts: RiffOpts; target: RiffTarget; cursor: Cursor; question: string } | null = null;
   let aiShownMode = '';
 
   /** Where a new riff goes: the cursor bar if it's still empty on this track, else the bar after it. */
@@ -1052,18 +1060,25 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
     const improving = selectAnchor !== null;
     const r = selection();
     const count = r.to - r.from + 1;
-    const mode = improving ? 'improve' : 'generate';
-    aiMode.textContent = improving
+    const mode = aiAsked ? 'asked' : improving ? 'improve' : 'generate';
+    aiMode.textContent = aiAsked
+      ? 'Answer the assistant\'s question in the box, then press Answer.'
+      : improving
       ? `Improve bar${count === 1 ? '' : 's'} ${r.from + 1}${count === 1 ? '' : `–${r.to + 1}`} of ${doc.tracks[cursor.track].name}, or ask for other parts to go with them.`
       : `Write a new riff from bar ${generateAt() + 1}. Ask for a bass line, drums or a second guitar too. Select bars (Shift + ← →) to improve them instead.`;
-    aiBarsLabel.classList.toggle('hidden', improving);
-    aiGo.textContent = aiBusy ? '■ Stop' : improving ? 'Improve' : 'Write';
-    aiGo.disabled = aiLocked || (!aiBusy && improving && count > MAX_RIFF_BARS);
+    aiBarsLabel.classList.toggle('hidden', improving || !!aiAsked);
+    aiGo.textContent = aiBusy ? '■ Stop' : aiAsked ? 'Answer' : improving ? 'Improve' : 'Write';
+    aiGo.disabled = aiLocked || (!aiBusy && !aiAsked && improving && count > MAX_RIFF_BARS);
     if (aiGo.disabled && !aiLocked) aiMode.textContent = `Select at most ${MAX_RIFF_BARS} bars to improve.`;
     aiPrompt.disabled = !!aiBusy || aiLocked;
     const ideasKey = `${mode}:${doc.tracks[cursor.track].kind}`;
     if (ideasKey === aiShownMode) return;
     aiShownMode = ideasKey;
+    if (aiAsked) {
+      aiPrompt.placeholder = 'Your answer, e.g. "the early albums"';
+      aiIdeas.replaceChildren();
+      return;
+    }
     aiPrompt.placeholder = improving ? 'What should change? (optional) e.g. "more syncopation"' : 'Describe the riff, e.g. "a funky riff in E minor"';
     const ideas = improving ? IMPROVE_IDEAS : GENERATE_IDEAS[doc.tracks[cursor.track].kind];
     aiIdeas.replaceChildren(...ideas.map((idea) => h('button.chip', { type: 'button', onclick: () => (aiPrompt.value = idea) }, idea)));
@@ -1131,7 +1146,14 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
     aiResult.classList.toggle('hidden', !children.length);
   }
 
-  async function runAssistant(again = false): Promise<void> {
+  function dropQuestion(): void {
+    aiAsked = null;
+    showAiResult();
+    drawAssistant();
+  }
+
+  /** `decide`: answer the assistant's question with nothing, so it picks the likeliest reading itself. */
+  async function runAssistant(again = false, decide = false): Promise<void> {
     if (aiBusy) {
       aiBusy.abort();
       return;
@@ -1139,23 +1161,34 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
     let request: RiffRequest;
     let target: RiffTarget;
     let from: Cursor;
+    let track: number;
+    let opts: RiffOpts;
     if (again && lastAi) {
       // Take the previous attempt out first, so the new one starts from the same song.
       if (doc === lastAi.doc) restore(history.undo({ doc, cursor }));
       ({ request, target, cursor: from } = lastAi);
+      track = from.track;
+      opts = request.mode === 'improve' ? { mode: 'improve', range: target.replace!, prompt: request.prompt } : { mode: 'generate', at: target.at!, bars: request.bars, prompt: request.prompt };
+    } else if (aiAsked) {
+      // The answer goes with the request the question was about, built again from the song as it is now.
+      const asked = aiAsked;
+      ({ track, opts, target, cursor: from } = asked);
+      const answer = decide ? '' : aiPrompt.value.trim();
+      request = { ...buildRiffRequest(doc, track, { ...opts, prompt: answer }), earlier: { prompt: opts.prompt, question: asked.question } };
     } else {
       from = cursor;
-      const track = cursor.track;
+      track = cursor.track;
       const prompt = aiPrompt.value.trim();
       if (selectAnchor !== null) {
         const range = selection();
         target = { replace: range };
-        request = buildRiffRequest(doc, track, { mode: 'improve', range, prompt });
+        opts = { mode: 'improve', range, prompt };
       } else {
         const at = generateAt();
         target = { at };
-        request = buildRiffRequest(doc, track, { mode: 'generate', at, bars: Number(aiBars.value), prompt });
+        opts = { mode: 'generate', at, bars: Number(aiBars.value), prompt };
       }
+      request = buildRiffRequest(doc, track, opts);
     }
     const problem = riffRequestProblem(request);
     if (problem) {
@@ -1176,8 +1209,8 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
     const drawProgress = () => {
       drawTimer = 0;
       const p = riffProgress(text);
-      said.textContent = p.explanation;
-      said.classList.toggle('hidden', !p.explanation);
+      said.textContent = p.question || p.explanation;
+      said.classList.toggle('hidden', !said.textContent);
       progress.replaceChildren(...progressLines(p, request.bars).map((line) => h('li', {}, line)));
     };
     const onEvent = (e: RiffEvent) => {
@@ -1195,6 +1228,25 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
       const { riff, usage, notice } = await api.riffAssistant(request, controller.signal, onEvent);
       window.clearTimeout(drawTimer);
       showUsage(usage);
+      const question = riffQuestion(riff);
+      if (question) {
+        // Keep the first words, so a second question (which the prompt rules out) still knows the request.
+        aiAsked = { track, opts: { ...opts, prompt: request.earlier?.prompt ?? opts.prompt }, target, cursor: from, question };
+        aiPrompt.value = '';
+        showAiResult(
+          h('p.ai-question', {}, question),
+          h('p.hint', {}, 'Answer in the box above, or let the assistant pick.'),
+          h(
+            'div.ai-row',
+            {},
+            h('button', { type: 'button', title: 'Write it without answering: the assistant picks the likeliest reading', onclick: () => void runAssistant(false, true) }, 'Let it decide'),
+            h('button', { type: 'button', title: 'Forget the question', onclick: () => dropQuestion() }, 'Never mind'),
+          ),
+        );
+        aiPrompt.focus();
+        return;
+      }
+      aiAsked = null;
       const result = riffFromAnswer(riff, doc, target);
       const e = applyRiff(doc, from, target, result);
       if (e.doc.tracks.length !== doc.tracks.length || e.cursor.track !== cursor.track) renderedTrack = -1;
@@ -1207,6 +1259,7 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
       const parts = e.written.length > 1 || e.written.some((w) => w.added) ? `${describeWritten(e.written, doc)}, ` : '';
       showAiResult(
         h('p', {}, result.explanation || (request.mode === 'improve' ? 'Here is a reworked version.' : 'Here is a new riff.')),
+        ...(result.style ? [h('p.hint.ai-style', {}, `Style: ${result.style}`)] : []),
         ...result.fixes.map((f) => h('p.hint', {}, f)),
         ...(notice ? [h('p.hint.warn', {}, notice)] : []),
         h('p.hint', {}, `Now in ${parts}${where}. Ctrl+Z takes it back.`),
