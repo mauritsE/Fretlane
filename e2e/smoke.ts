@@ -452,6 +452,27 @@ await page.waitForTimeout(300);
 const auAfterPin = await page.evaluate(() => (window as any).fretlane.at.timePosition as number);
 check(Math.abs(auAfterPin - 1500) < 100, `with bar 1 pinned at 1.0s, audio 2.5s maps to tab ${Math.round(auAfterPin)}ms (expected ~1500)`);
 
+// An intro before bar 1. Pinning used to keep alphaTab's tab position and move the recording to
+// match it (here 2.5 s → 4.0 s), and ⏮ and opening the song skipped to bar 1.
+await page.fill('.sync-panel input[type=number]', '1');
+await page.click('.sync-panel button.primary');
+await page.waitForTimeout(300);
+const repin = (await audio('({ t: a.currentTime, at: window.fretlane.at.timePosition })')) as { t: number; at: number };
+check(Math.abs(repin.t - 2.5) < 0.05 && Math.abs(repin.at) < 100, `pinning bar 1 in the intro leaves the recording where it is (audio ${repin.t.toFixed(2)}s, tab ${Math.round(repin.at)}ms)`);
+await audio('(a.currentTime = 1, 0)');
+await page.waitForTimeout(200);
+await page.fill('.sync-panel input[type=number]', '1');
+await page.click('.sync-panel button.primary');
+await page.waitForTimeout(600);
+check((await api<{ syncPoints: { bar: number; time: number }[] }>(`/api/songs/${auSong.id}`)).syncPoints[0].time === 1, 'bar 1 pinned back to 1.0s');
+await page.click('button[title="Back to start"]');
+await page.waitForTimeout(300);
+const back = (await audio('({ t: a.currentTime, at: window.fretlane.at.timePosition })')) as { t: number; at: number };
+check(back.t === 0 && Math.abs(back.at + 1000) < 100, `⏮ goes to the start of the intro (audio ${back.t}s, tab ${Math.round(back.at)}ms)`);
+check((await page.locator('.bar-pos').textContent()) === 'Intro · bar 1 in 1s', `the footer counts down the intro (${await page.locator('.bar-pos').textContent()})`);
+await audio('(a.currentTime = 2.5, 0)');
+await page.waitForTimeout(300);
+
 // ---------- the waveform for placing pins (decodes the same WAV: clicks every 0.5 s, 10 ms long) ----------
 await page.waitForSelector('.sync-panel .waveform[data-state=ready]', { timeout: 10000 });
 check(true, 'the sync panel shows a waveform for an audio file');

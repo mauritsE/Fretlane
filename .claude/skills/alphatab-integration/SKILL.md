@@ -29,6 +29,8 @@ The complete typed API is in `node_modules/@coderline/alphatab/dist/alphaTab.d.t
 - Apply in `at.scoreLoaded`, which fires before the MIDI and time map are built.
 - With no sync points, media time 0 = tick 0.
 - If the first pin isn't on bar 0, extrapolate a bar-0 point from the score tempo (`shared/sync.ts#toFlatSyncPoints`). Otherwise bars before the first pin map strangely.
+- Recording time before bar 1's sync point (an intro that isn't in the tab) maps to a negative tab time; the cursor waits on bar 1. Negative bar-0 offsets (the tab starts before the recording) map correctly too.
+- `loadMidiForScore()` (on every score load), `updateSyncPoints()` and `stop()` all set `tickPosition = tickPosition`, which seeks the media to where the *tab* is. With an intro that skips it on open and moves a paused recording forward by the intro's length right after a pin. `playerView.ts` sets `keepRecordingTime` around those calls (`midiLoad` fires synchronously just before the reload) and skips `seekTo` meanwhile, then re-pushes the media position.
 
 ## Loading
 - alphaTex: `at.tex(text, [trackIndex])`. Binary GP or MusicXML: `at.load(uint8array, [trackIndex])`.

@@ -24,6 +24,16 @@ export function toFlatSyncPoints(points: SyncPoint[], barStartMs: (bar: number) 
   return flat;
 }
 
+/**
+ * Where bar 1 starts in the recording, in seconds (0 without pins). It is later than 0:00 when
+ * the recording has an intro that isn't in the tab, and before 0:00 when the tab starts earlier
+ * than the recording (only a later bar is pinned).
+ */
+export function tabStartTime(points: SyncPoint[], barStartMs: (bar: number) => number): number {
+  const first = toFlatSyncPoints(points, barStartMs)[0];
+  return first ? first.millisecondOffset / 1000 : 0;
+}
+
 /** Sort by bar, drop duplicates (last write wins) and drop pins that would run backwards in time. */
 export function normalizeSyncPoints(points: SyncPoint[]): SyncPoint[] {
   const byBar = new Map<number, number>();
