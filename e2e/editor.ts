@@ -128,15 +128,33 @@ const fake = http.createServer(async (req, res) => {
     if (subscription?.status !== 'active') return json(402, { error: 'The songwriting assistant comes with the Fretlane Cloud plan.' });
     // Like the website: the plan's monthly bars (one bar on one track), charged for what was written.
     if (assistantBarsUsed + r.bars > 96) return json(402, { error: `You have ${96 - assistantBarsUsed} of your 96 songwriting assistant bars left this month, and this request needs at least ${r.bars}.` });
-    const reply = (riff: { explanation: string; parts: { bars: unknown[] }[] }) => {
+    const reply = async (riff: { explanation: string; parts: { bars: unknown[] }[] }, slow = false) => {
       assistantBarsUsed += riff.parts.reduce((n, p) => n + Math.min(p.bars.length, r.bars), 0);
-      return json(200, { riff, usage: { plan: 'Fretlane Cloud', used: assistantBarsUsed, allowance: 96, resetsOn: '2026-11-01T00:00:00.000Z' } });
+      const usage = { plan: 'Fretlane Cloud', used: assistantBarsUsed, allowance: 96, resetsOn: '2026-11-01T00:00:00.000Z' };
+      if (!(req.headers.accept ?? '').includes('application/x-ndjson')) return json(200, { riff, usage });
+      // Like the website: Claude's answer as it is written, then the riff. `slow` writes it over a
+      // few seconds, with a first answer the checks send back, so the test can watch the progress.
+      res.writeHead(200, { 'content-type': 'application/x-ndjson' });
+      const send = (e: unknown) => res.write(`${JSON.stringify(e)}\n`);
+      const text = JSON.stringify(riff);
+      const pieces = slow ? 24 : 4;
+      if (slow) {
+        send({ type: 'text', text: text.slice(0, text.length / 3) });
+        await new Promise((r) => setTimeout(r, 600));
+        send({ type: 'restart', problems: 2 });
+      }
+      for (let i = 0; i < pieces; i++) {
+        send({ type: 'text', text: text.slice(Math.floor((i * text.length) / pieces), Math.floor(((i + 1) * text.length) / pieces)) });
+        await new Promise((r) => setTimeout(r, slow ? 120 : 20));
+      }
+      send({ type: 'done', riff, usage });
+      res.end();
     };
     if (/drums/.test(r.prompt)) {
       return reply({
         explanation: 'A riff with a bass line and a rock beat under it.',
         parts: [guitarPart([eighthsBar(0), eighthsBar(3)]), { track: 0, instrument: 'bass', name: 'Bass', bars: [eighthsBar(0, 8, 4), eighthsBar(3, 8, 4)] }, { track: 0, instrument: 'drums', name: 'Drums', bars: [rockBar(), rockBar()] }],
-      });
+      }, true);
     }
     if (r.mode === 'generate') return reply({ explanation: 'A funky two-bar riff on the low string.', parts: [guitarPart([eighthsBar(3, 9), eighthsBar(5)])] });
     return reply({ explanation: 'Moved it up to the seventh fret for a heavier sound.', parts: [guitarPart(Array.from({ length: r.bars }, () => eighthsBar(7)))] });
@@ -390,7 +408,22 @@ assistantBarsUsed = barsBefore;
 await page.fill('.ai-prompt', 'a riff with bass and drums');
 await page.locator('.ai-prompt').evaluate((el) => (el as HTMLTextAreaElement).blur());
 await page.click('.ai-go');
+// The answer streams in: the panel says the checks sent problems back, then shows the explanation
+// and each part's bars while Claude is still writing.
+await page.waitForFunction(() => /Fixing 2 problems the checks found/.test(document.querySelector('.ai-thinking')?.textContent ?? ''), undefined, { timeout: 15000 });
+await page.waitForFunction(() => /Bass: bar \d of 2/.test(document.querySelector('.ai-progress')?.textContent ?? ''), undefined, { timeout: 15000 });
+const streaming = {
+  said: await page.locator('.ai-said').textContent(),
+  lines: await page.locator('.ai-progress li').allTextContents(),
+  busy: (await page.locator('.ai-thinking').count()) === 1,
+};
+check(
+  streaming.busy && streaming.said === 'A riff with a bass line and a rock beat under it.' && streaming.lines[0] === 'Guitar: bar 2 of 2' && /^Bass: bar [12] of 2$/.test(streaming.lines[1]),
+  `while Claude writes, the panel shows the explanation and each part's bars so far (${JSON.stringify(streaming)})`,
+);
+await page.screenshot({ path: path.join(SHOTS, 'editor-5d-assistant-streaming.png') });
 await page.waitForFunction(() => /rock beat/.test(document.querySelector('.ai-result')?.textContent ?? ''), undefined, { timeout: 15000 });
+await page.waitForFunction(() => !document.querySelector('.ai-thinking'), undefined, { timeout: 15000 });
 await rendered();
 s = await ed();
 check(

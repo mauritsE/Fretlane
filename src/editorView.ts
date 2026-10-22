@@ -37,6 +37,7 @@ import {
   type RiffTarget,
 } from '../shared/editor/assistant.ts';
 import type { Cursor, Edit, Entry, NoteFlag } from '../shared/editor/commands.ts';
+import { progressLines, riffProgress, type RiffEvent } from '../shared/editor/riffStream.ts';
 import { api } from './api.ts';
 import { h, toast } from './dom.ts';
 import { metronomeButton } from './metronome.ts';
@@ -1165,9 +1166,34 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
     const controller = new AbortController();
     aiBusy = controller;
     drawAssistant();
-    showAiResult(h('p.ai-thinking', {}, h('span.spinner.small'), request.mode === 'improve' ? 'Reworking your riff…' : 'Writing a riff…'));
+    // Claude's answer streams in: show its explanation and each part's bars as they are written.
+    const status = h('span', {}, request.mode === 'improve' ? 'Reworking your riff…' : 'Writing a riff…');
+    const said = h('p.ai-said.hidden', {});
+    const progress = h('ul.ai-progress', {});
+    showAiResult(h('p.ai-thinking', {}, h('span.spinner.small'), status), said, progress);
+    let text = '';
+    let drawTimer = 0;
+    const drawProgress = () => {
+      drawTimer = 0;
+      const p = riffProgress(text);
+      said.textContent = p.explanation;
+      said.classList.toggle('hidden', !p.explanation);
+      progress.replaceChildren(...progressLines(p, request.bars).map((line) => h('li', {}, line)));
+    };
+    const onEvent = (e: RiffEvent) => {
+      if (e.type === 'text') text += e.text;
+      else if (e.type === 'restart') {
+        text = '';
+        status.textContent = e.problems
+          ? `Fixing ${e.problems === 1 ? 'a problem' : `${e.problems} problems`} the checks found…`
+          : 'Trying again…';
+      }
+      // Parsing the partial answer a few times a second is plenty, and keeps long answers cheap.
+      drawTimer ||= window.setTimeout(drawProgress, 150);
+    };
     try {
-      const { riff, usage, notice } = await api.riffAssistant(request, controller.signal);
+      const { riff, usage, notice } = await api.riffAssistant(request, controller.signal, onEvent);
+      window.clearTimeout(drawTimer);
       showUsage(usage);
       const result = riffFromAnswer(riff, doc, target);
       const e = applyRiff(doc, from, target, result);
@@ -1193,6 +1219,7 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
         ),
       );
     } catch (err) {
+      window.clearTimeout(drawTimer);
       showAiResult(h('p.hint.warn', {}, controller.signal.aborted ? 'Stopped.' : (err as Error).message));
       // E.g. the month's bars ran out: the bar shows where things stand.
       if (!controller.signal.aborted) refreshStatus();

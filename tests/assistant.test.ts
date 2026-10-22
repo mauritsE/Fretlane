@@ -27,6 +27,7 @@ import {
   type RiffRequest,
 } from '../shared/editor/assistant.ts';
 import { RIFF_MODEL, RiffAssistant, askClaude } from '../server/assistant.ts';
+import type { RiffEvent } from '../shared/editor/riffStream.ts';
 import type { FretlaneCloud } from '../server/cloud.ts';
 import { HttpError } from '../server/library.ts';
 
@@ -416,7 +417,18 @@ describe('server: RiffAssistant', () => {
             const res = answers[Math.min(calls.length, answers.length) - 1];
             // Real answers always carry usage; the server logs it.
             const usage = { input_tokens: 100, output_tokens: 50, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 };
-            return { finalMessage: async () => (res instanceof Error ? Promise.reject(res) : { usage, ...res }) };
+            // The text comes as two deltas through on('text'), before finalMessage() resolves.
+            const text = res instanceof Error ? '' : (res.content ?? []).flatMap((b) => (b.type === 'text' ? [b.text] : [])).join('');
+            const listeners: ((delta: string) => void)[] = [];
+            const stream = {
+              on: (event: string, cb: (delta: string) => void) => (event === 'text' && listeners.push(cb), stream),
+              finalMessage: async () => {
+                if (res instanceof Error) throw res;
+                for (const part of text ? [text.slice(0, 7), text.slice(7)] : []) listeners.forEach((cb) => cb(part));
+                return { usage, ...res };
+              },
+            };
+            return stream;
           },
         },
       },
@@ -461,6 +473,16 @@ describe('server: RiffAssistant', () => {
     expect(second[2].content).toMatch(/Part 1, bar 1 adds up to 3 quarter notes; it needs exactly 4\./);
     // The song and the question are the same turn as before, so the second call reads them from the cache.
     expect(second[0]).toEqual((calls[0] as { messages: unknown[] }).messages[0]);
+  });
+
+  it('streams the answer as it is written, and starts over for the correction', async () => {
+    const events: RiffEvent[] = [];
+    await askClaude(fakeClient(text(short), text(reply)).client, checked, (e) => events.push(e));
+    expect(events.map((e) => e.type)).toEqual(['text', 'text', 'restart', 'text', 'text']);
+    expect(events[2]).toEqual({ type: 'restart', problems: 1 });
+    const written = (from: number, to: number) => events.slice(from, to).map((e) => (e.type === 'text' ? e.text : '')).join('');
+    expect(written(0, 2)).toBe(JSON.stringify(short));
+    expect(written(3, 5)).toBe(JSON.stringify(reply));
   });
 
   it('keeps the first answer when the correction is worse or fails', async () => {

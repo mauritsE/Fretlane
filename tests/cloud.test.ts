@@ -148,6 +148,9 @@ class FakeSupabase {
   }
 
   assistantUsage: unknown = null; // the month's usage, 'no-plan', or null for an older website
+  /** The website's answer to a riff request: NDJSON lines when the app asks for the stream, else JSON. */
+  riffLines: string[] | null = null;
+  riffAccept = '';
 
   fetch: typeof fetch = async (input, init) => {
     const url = new URL(String(input));
@@ -181,6 +184,19 @@ class FakeSupabase {
     if (url.pathname === '/api/public/app/riff-assistant' && (init?.method ?? 'GET') === 'GET') {
       if (this.assistantUsage === 'no-plan') return Response.json({ error: 'The songwriting assistant comes with the Fretlane Cloud plan.' }, { status: 402 });
       return this.assistantUsage ? Response.json({ usage: this.assistantUsage }) : new Response('not found', { status: 404 });
+    }
+    if (url.pathname === '/api/public/app/riff-assistant' && init?.method === 'POST') {
+      this.riffAccept = headers.get('accept') ?? '';
+      if (!this.riffLines) return Response.json({ riff: { explanation: 'x', parts: [] }, usage: this.assistantUsage });
+      // One chunk per line, split mid-line too, the way a network delivers them.
+      const chunks = this.riffLines.flatMap((l) => [l.slice(0, 5), l.slice(5)]);
+      const stream = new ReadableStream<Uint8Array>({
+        start(c) {
+          for (const chunk of chunks) c.enqueue(new TextEncoder().encode(chunk));
+          c.close();
+        },
+      });
+      return new Response(stream, { headers: { 'content-type': 'application/x-ndjson; charset=utf-8' } });
     }
     if (url.pathname === '/rest/v1/subscriptions') return Response.json(this.subscription ? [this.subscription] : []);
     if (url.pathname === '/rest/v1/rpc/my_kofi_membership' && init?.method === 'POST') return Response.json(this.kofiEnd);
@@ -312,6 +328,38 @@ describe('FretlaneCloud', () => {
     expect((await c.assistantStatus()).access).toBe('unknown');
     fake.offline = true;
     expect((await c.assistantStatus()).access).toBe('unknown');
+  });
+
+  it("passes the website's streamed riff on as it arrives, and still reads a plain JSON answer", async () => {
+    const c = await cloud();
+    await signIn(c);
+    const req = { mode: 'generate', prompt: 'a riff', bars: 1, song: 'Song', focus: 'Bar 1' } as const;
+    const usage = { plan: 'Fretlane Cloud', used: 41, allowance: 96, resetsOn: '2026-11-01T00:00:00.000Z' };
+    const line = (e: unknown) => `${JSON.stringify(e)}\n`;
+    fake.riffLines = [
+      line({ type: 'text', text: '{"explanation":"A ri' }),
+      line({ type: 'restart', problems: 2 }),
+      line({ type: 'text', text: '{"explanation":"A riff","parts":[]}' }),
+      line({ type: 'done', riff: { explanation: 'A riff', parts: [] }, usage, notice: 'Left out Drums.' }),
+    ];
+    const events: unknown[] = [];
+    expect(await c.riffAssistant(req, (e) => events.push(e))).toEqual({ riff: { explanation: 'A riff', parts: [] }, usage, notice: 'Left out Drums.' });
+    expect(fake.riffAccept).toContain('application/x-ndjson');
+    expect(events).toEqual([
+      { type: 'text', text: '{"explanation":"A ri' },
+      { type: 'restart', problems: 2 },
+      { type: 'text', text: '{"explanation":"A riff","parts":[]}' },
+    ]);
+    // An error once the stream had started keeps the status the website gave it.
+    fake.riffLines = [line({ type: 'text', text: '{' }), line({ type: 'error', status: 422, error: 'The assistant declined this request.' })];
+    await expect(c.riffAssistant(req)).rejects.toMatchObject({ status: 422, message: 'The assistant declined this request.' });
+    // A stream that breaks off without an answer is an error, not an empty riff.
+    fake.riffLines = [line({ type: 'text', text: '{"expl' })];
+    await expect(c.riffAssistant(req)).rejects.toMatchObject({ status: 502 });
+    // A website from before streaming answers JSON.
+    fake.riffLines = null;
+    fake.assistantUsage = usage;
+    expect(await c.riffAssistant(req)).toEqual({ riff: { explanation: 'x', parts: [] }, usage });
   });
 
   it('keeps the sign-in when the website redirects to its own domain', async () => {
