@@ -991,7 +991,6 @@ export async function renderEditor(root: HTMLElement, songId: string): Promise<C
       [h('label', {}, 'Name', name), h('label', {}, 'Instrument', kindSel), tuningHost, soundHost, hint],
       () => {
         const t = tuning.value();
-        if (!t) throw new Error('Type the tuning as note names, lowest string first (4 to 8 strings).');
         if (existing && index !== null) {
           renderedTrack = -1;
           apply(cmd.updateTrack(doc, cursor, index, { name: name.value, sound: sound.value, tuning: t }));

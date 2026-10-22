@@ -14,7 +14,11 @@ import {
   beatTicks,
   describeTicks,
   newSongDoc,
+  addLowString,
+  findTuningPreset,
   parseTuning,
+  removeLowString,
+  shiftTuning,
   pitchName,
   restsFor,
   voiceTicks,
@@ -126,10 +130,39 @@ describe('editor document', () => {
     expect(parseTuning('B1 E2 A2 D3 G3', 'bass')).toEqual([55, 50, 45, 40, 35]);
     expect(parseTuning('E A D G', 'bass')).toEqual([43, 38, 33, 28]);
     expect(parseTuning('C# F# B E G# C#', 'guitar')).toEqual([61, 56, 52, 47, 42, 37]);
+    // Low tunings land in the low octave, not an octave above.
+    expect(parseTuning('C G C F A D', 'guitar')).toEqual(TUNING_PRESETS.find((p) => p.id === 'guitar-drop-c')!.tuning);
+    expect(parseTuning('A E A D F# B', 'guitar')).toEqual(TUNING_PRESETS.find((p) => p.id === 'guitar-drop-a')!.tuning);
+    expect(parseTuning('G C F Bb D G', 'guitar')).toEqual([55, 50, 46, 41, 36, 31]);
+    expect(parseTuning('F# B E A D G B E', 'guitar')).toEqual(TUNING_PRESETS.find((p) => p.id === 'guitar-8-standard')!.tuning);
+    expect(parseTuning('A E A D G B E', 'guitar')).toEqual(TUNING_PRESETS.find((p) => p.id === 'guitar-7-drop-a')!.tuning);
+    expect(parseTuning('C G C F', 'bass')).toEqual(TUNING_PRESETS.find((p) => p.id === 'bass-drop-c')!.tuning);
+    expect(parseTuning('A E A D G', 'bass')).toEqual(TUNING_PRESETS.find((p) => p.id === 'bass-5-drop-a')!.tuning);
+    expect(parseTuning('G C E A', 'ukulele')).toEqual(TUNING_PRESETS.find((p) => p.id === 'ukulele-low-g')!.tuning);
     expect(parseTuning('E A D', 'guitar')).toBeNull();
     expect(parseTuning('E A D G B H', 'guitar')).toBeNull();
     expect(pitchName(40)).toBe('E2');
     expect(pitchName(63)).toBe('Eb4');
+  });
+
+  it('every preset reads back as itself from its note names', () => {
+    for (const p of TUNING_PRESETS) {
+      if (p.kind === 'drums' || p.kind === 'ukulele' || p.kind === 'banjo') continue; // re-entrant
+      const names = [...p.tuning].reverse().map((m) => pitchName(m).replace(/-?\d+$/, '')).join(' ');
+      expect(parseTuning(names, p.kind), p.id).toEqual(p.tuning);
+    }
+  });
+
+  it('moves, adds and removes strings within the instrument', () => {
+    const standard = TUNING_PRESETS[0].tuning;
+    expect(shiftTuning(standard, -4, 'guitar')).toEqual(TUNING_PRESETS.find((p) => p.id === 'guitar-c-standard')!.tuning);
+    expect(shiftTuning([64, 59, 55, 50, 45, 21], -1, 'guitar')).toEqual([64, 59, 55, 50, 45, 21]);
+    expect(addLowString(standard, 'guitar')).toEqual(TUNING_PRESETS.find((p) => p.id === 'guitar-7-standard')!.tuning);
+    expect(addLowString(TUNING_PRESETS.find((p) => p.id === 'bass-standard')!.tuning, 'bass')).toEqual(TUNING_PRESETS.find((p) => p.id === 'bass-5-standard')!.tuning);
+    expect(addLowString([64, 59, 55, 50, 45, 40, 35, 30], 'guitar')).toHaveLength(8);
+    expect(removeLowString([43, 38, 33, 28])).toEqual([43, 38, 33, 28]);
+    expect(removeLowString(standard)).toEqual([64, 59, 55, 50, 45]);
+    expect(findTuningPreset('guitar', [62, 57, 53, 48, 43, 36])?.id).toBe('guitar-drop-c');
   });
 });
 

@@ -5,11 +5,19 @@ import {
   DRUM_TUNING,
   SOUNDS,
   TIME_SIGNATURES,
+  MAX_STRINGS,
+  MIN_STRINGS,
   TUNING_PRESETS,
+  addLowString,
+  findTuningPreset,
   newSongDoc,
   parseTuning,
   pitchName,
+  removeLowString,
+  shiftTuning,
+  stringPitchRange,
   type DocTrack,
+  type TuningPreset,
   type SongDoc,
   type TrackKind,
 } from '../shared/editor/doc.ts';
@@ -33,26 +41,79 @@ export function writeButton(): HTMLButtonElement {
   );
 }
 
-/** Tuning picker for one track: the presets for its kind, plus a custom tuning typed in. */
-export function tuningField(kind: TrackKind, current?: number[]): { el: HTMLElement; value: () => number[] | null } {
+/**
+ * Tuning picker for one track: a preset, then one note per string (lowest first, as guitarists
+ * say it) that can be changed on its own or typed as text, the whole tuning moved a half step at
+ * a time, and strings added below or taken off. Any change that matches a preset selects it.
+ */
+export function tuningField(kind: TrackKind, current?: number[]): { el: HTMLElement; value: () => number[] } {
   const presets = TUNING_PRESETS.filter((p) => p.kind === kind);
-  const match = current && presets.find((p) => p.tuning.join() === current.join());
+  let tuning = [...(current ?? presets[0].tuning)];
+  if (kind === 'drums') return { el: h('span.tuning-field'), value: () => [...tuning] };
+
+  const [lo, hi] = stringPitchRange(kind);
+  const custom = h('option', { value: 'custom' }, 'Custom');
+  const counts = [...new Set(presets.map((p) => p.tuning.length))];
+  const option = (p: TuningPreset) => h('option', { value: p.id }, p.label);
   const select = h(
     'select',
-    { title: 'Tuning' },
-    ...presets.map((p) => h('option', { value: p.id, selected: match ? match.id === p.id : p === presets[0] }, p.label)),
-    // A drum kit has no tuning to type.
-    kind === 'drums' ? null : h('option', { value: 'custom', selected: !!current && !match }, 'Custom…'),
+    { title: 'Tuning preset' },
+    // Group by number of strings when the instrument has more than one (guitar, bass).
+    counts.length > 1
+      ? counts.map((n) => h('optgroup', { label: `${n} strings` }, ...presets.filter((p) => p.tuning.length === n).map(option)))
+      : presets.map(option),
+    custom,
   );
-  const custom = h('input', {
-    placeholder: kind === 'bass' ? 'Lowest string first, e.g. D A D G' : 'Lowest string first, e.g. C G C F A D',
-    value: current && !match ? [...current].reverse().map(pitchName).join(' ') : '',
-    class: current && !match ? '' : 'hidden',
+  const strings = h('span.tuning-strings');
+  // The same tuning as text, for typing one in ("A E A D F# B" is drop A).
+  const typed = h('input.tuning-typed', { title: 'Or type the notes, lowest string first', 'aria-label': 'Tuning as note names, lowest string first', spellcheck: false });
+  typed.addEventListener('input', () => {
+    const parsed = parseTuning(typed.value, kind);
+    typed.classList.toggle('invalid', !parsed);
+    if (parsed) set(parsed, false);
   });
-  select.addEventListener('change', () => custom.classList.toggle('hidden', select.value !== 'custom'));
+  typed.addEventListener('blur', () => set(tuning));
+  const button = (label: string, title: string, onclick: () => void) => h('button.small', { type: 'button', title, 'aria-label': title, onclick }, label);
+  const down = button('▼ ½', 'Tune every string a half step down', () => set(shiftTuning(tuning, -1, kind)));
+  const up = button('▲ ½', 'Tune every string a half step up', () => set(shiftTuning(tuning, 1, kind)));
+  const add = button('+ string', 'Add a lower string (a fourth below)', () => set(addLowString(tuning, kind)));
+  const remove = button('− string', 'Take off the lowest string', () => set(removeLowString(tuning)));
+
+  function set(next: number[], retype = true): void {
+    tuning = next;
+    if (retype) {
+      typed.value = [...tuning].reverse().map((p) => pitchName(p).replace(/-?\d+$/, '')).join(' ');
+      typed.classList.remove('invalid');
+    }
+    const preset = findTuningPreset(kind, tuning);
+    custom.hidden = !!preset;
+    select.value = preset?.id ?? 'custom';
+    // Lowest string first, left to right; the tuning itself is stored highest string first.
+    strings.replaceChildren(
+      ...[...tuning].reverse().map((pitch, i) => {
+        const index = tuning.length - 1 - i;
+        const pick = h(
+          'select.string-pitch',
+          { title: `String ${index + 1}`, 'aria-label': `String ${index + 1}` },
+          ...Array.from({ length: hi - lo + 1 }, (_, k) => hi - k).map((m) => h('option', { value: m, selected: m === pitch }, pitchName(m))),
+        );
+        pick.addEventListener('change', () => set(tuning.map((p, j) => (j === index ? Number(pick.value) : p))));
+        return pick;
+      }),
+    );
+    down.disabled = tuning.some((p) => p - 1 < lo);
+    up.disabled = tuning.some((p) => p + 1 > hi);
+    add.disabled = tuning.length >= MAX_STRINGS;
+    remove.disabled = tuning.length <= MIN_STRINGS;
+  }
+  select.addEventListener('change', () => {
+    const preset = presets.find((p) => p.id === select.value);
+    if (preset) set([...preset.tuning]);
+  });
+  set(tuning);
   return {
-    el: h('span.tuning-field', {}, select, custom),
-    value: () => (select.value === 'custom' ? parseTuning(custom.value, kind) : (presets.find((p) => p.id === select.value)?.tuning ?? null)),
+    el: h('span.tuning-field', {}, select, h('span.tuning-row', {}, strings, typed), h('span.tuning-row', {}, h('span.tuning-buttons', {}, down, up, add, remove))),
+    value: () => [...tuning],
   };
 }
 
@@ -91,14 +152,10 @@ export function openNewSongDialog(): void {
         try {
           const tracks: DocTrack[] = [];
           if (gtrOn.checked) {
-            const tuning = gtrTuning.value();
-            if (!tuning) throw new Error('Type the guitar tuning as note names, lowest string first (4 to 8 strings).');
-            tracks.push({ name: 'Guitar', kind: 'guitar', sound: gtrSound.value, tuning });
+            tracks.push({ name: 'Guitar', kind: 'guitar', sound: gtrSound.value, tuning: gtrTuning.value() });
           }
           if (bassOn.checked) {
-            const tuning = bassTuning.value();
-            if (!tuning) throw new Error('Type the bass tuning as note names, lowest string first (4 to 8 strings).');
-            tracks.push({ name: 'Bass', kind: 'bass', sound: bassSound.value, tuning });
+            tracks.push({ name: 'Bass', kind: 'bass', sound: bassSound.value, tuning: bassTuning.value() });
           }
           if (drumsOn.checked) tracks.push({ name: 'Drums', kind: 'drums', sound: DEFAULT_SOUND.drums, tuning: [...DRUM_TUNING] });
           if (!tracks.length) throw new Error('Pick at least one instrument.');
