@@ -41,7 +41,7 @@ let subscription: { status: string; current_period_end: string | null } | null =
 /** Requests the fake website's songwriting assistant received. */
 /** The fake website's count of this month's assistant bars. */
 let assistantBarsUsed = 0;
-const riffRequests: { mode: string; prompt: string; bars: number; song: string; focus: string }[] = [];
+const riffRequests: { mode: string; prompt: string; bars: number; song: string; focus: string; canAsk?: boolean; earlier?: { prompt: string; question: string } }[] = [];
 const eighthsBar = (fret: number, count = 8, string = 6) => ({ beats: Array.from({ length: count }, () => ({ duration: 8, dotted: false, triplet: false, notes: [{ string, fret, drum: 'none', techniques: [] }] })) });
 /** Kick + hi-hat, hi-hat, snare + hi-hat, hi-hat … in eighths. */
 const rockBar = () => ({
@@ -128,7 +128,7 @@ const fake = http.createServer(async (req, res) => {
     if (subscription?.status !== 'active') return json(402, { error: 'The songwriting assistant comes with the Fretlane Cloud plan.' });
     // Like the website: the plan's monthly bars (one bar on one track), charged for what was written.
     if (assistantBarsUsed + r.bars > 96) return json(402, { error: `You have ${96 - assistantBarsUsed} of your 96 songwriting assistant bars left this month, and this request needs at least ${r.bars}.` });
-    const reply = async (riff: { explanation: string; parts: { bars: unknown[] }[] }, slow = false) => {
+    const reply = async (riff: { question?: string; style?: string; explanation: string; parts: { bars: unknown[] }[] }, slow = false) => {
       assistantBarsUsed += riff.parts.reduce((n, p) => n + Math.min(p.bars.length, r.bars), 0);
       const usage = { plan: 'Fretlane Cloud', used: assistantBarsUsed, allowance: 96, resetsOn: '2026-11-01T00:00:00.000Z' };
       if (!(req.headers.accept ?? '').includes('application/x-ndjson')) return json(200, { riff, usage });
@@ -150,6 +150,9 @@ const fake = http.createServer(async (req, res) => {
       send({ type: 'done', riff, usage });
       res.end();
     };
+    // A style Claude can't place: it asks, and writes once the guitarist answers.
+    if (r.earlier) return reply({ question: '', style: 'slow open-string drones under a high melody', explanation: 'A slow, droning riff like their second album.', parts: [guitarPart([eighthsBar(0), eighthsBar(2)])] });
+    if (/Zorblax/.test(r.prompt)) return reply({ question: 'I don\'t know the Zorblax well enough. Which album, or how would you describe their guitar sound?', style: '', explanation: '', parts: [] });
     if (/drums/.test(r.prompt)) {
       return reply({
         explanation: 'A riff with a bass line and a rock beat under it.',
@@ -403,6 +406,36 @@ const m2 = await meter();
 check(m2.level === 'low' && m2.width === '99%', `then the bar shows how little is left (${JSON.stringify(m2)})`);
 await page.screenshot({ path: path.join(SHOTS, 'editor-5c-assistant-bars-low.png') });
 assistantBarsUsed = barsBefore;
+
+// A style the assistant can't place: it asks a question back instead of making one up, and writes once answered.
+await page.fill('.ai-prompt', 'a riff in the style of the Zorblax');
+await page.locator('.ai-prompt').evaluate((el) => (el as HTMLTextAreaElement).blur());
+await page.click('.ai-go');
+await page.waitForSelector('.ai-result .ai-question', { timeout: 15000 });
+check(riffRequests.at(-1)?.canAsk === true && stable((await ed()).doc) === docBefore, 'the editor says it can show a question, and a question leaves the song as it was');
+check(
+  /Which album/.test((await page.locator('.ai-question').textContent()) ?? '') && (await page.locator('.ai-go').textContent()) === 'Answer' && (await page.inputValue('.ai-prompt')) === '' && /Answer the assistant/.test((await page.locator('.ai-mode').textContent()) ?? ''),
+  'the question shows in the panel, the box is cleared for the answer and the button says Answer',
+);
+await page.screenshot({ path: path.join(SHOTS, 'editor-5e-assistant-question.png') });
+await page.fill('.ai-prompt', 'their second album');
+await page.locator('.ai-prompt').evaluate((el) => (el as HTMLTextAreaElement).blur());
+await page.click('.ai-go');
+await page.waitForSelector('.ai-result button:has-text("Try again")', { timeout: 15000 });
+await rendered();
+const answered = riffRequests.at(-1)!;
+check(
+  answered.prompt === 'their second album' && answered.earlier?.prompt === 'a riff in the style of the Zorblax' && /Which album/.test(answered.earlier.question) && answered.mode === 'generate',
+  'the answer goes with the first request and the question',
+);
+check(
+  /Style: slow open-string drones/.test((await page.locator('.ai-result').textContent()) ?? '') && beats((await ed()).doc, 4) === Array(8).fill('0.6:8').join(' ') && (await page.locator('.ai-go').textContent()) === 'Improve',
+  'then the riff goes in, with the style traits it followed, and the box is back to normal',
+);
+await page.keyboard.press('Control+z');
+await rendered();
+check(stable((await ed()).doc) === docBefore, 'Ctrl+Z takes the answered riff back');
+await page.keyboard.press('Escape');
 
 // More parts: a riff with bass and drums gets two new tracks.
 await page.fill('.ai-prompt', 'a riff with bass and drums');

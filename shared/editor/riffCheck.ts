@@ -31,6 +31,12 @@ const MAX_DRUM_HITS = 4;
 const HI_HATS = ['openHiHat', 'closedHiHat', 'pedalHiHat'];
 /** A part is out of key when more than this share of its notes is outside the key's scale. */
 const OUT_OF_KEY = 0.3;
+/**
+ * The same with a style named (the answer's `style`): blues, metal and jazz often have a third or
+ * more of their notes outside the plain major or minor scale (blue notes, chromatic runs), so only a
+ * part that is mostly outside the key is flagged.
+ */
+const OUT_OF_KEY_STYLED = 0.5;
 /** Fewer notes than this say too little about the key to complain. */
 const MIN_KEY_NOTES = 8;
 const MAX_PROBLEMS = 12;
@@ -70,11 +76,13 @@ const num = (q: number) => String(Math.round(q * 100) / 100);
 
 /**
  * The problems in one answer, one plain sentence each, most important first; empty when it's fine.
- * `bars` is how many bars each part should have.
+ * `bars` is how many bars each part should have. An answer that asks a question has nothing to check.
  */
 export function riffProblems(raw: unknown, bars: number, ctx?: RiffCheckContext): string[] {
-  const parts = (raw as { parts?: unknown } | null)?.parts;
-  if (!Array.isArray(parts)) return [];
+  const answer = raw as { parts?: unknown; question?: unknown; style?: unknown } | null;
+  const parts = answer?.parts;
+  if (!Array.isArray(parts) || (typeof answer?.question === 'string' && answer.question.trim())) return [];
+  const styled = typeof answer?.style === 'string' && answer.style.trim() !== '';
   const out: string[] = [];
   const add = (s: string) => {
     if (out.length < MAX_PROBLEMS) out.push(s);
@@ -125,8 +133,12 @@ export function riffProblems(raw: unknown, bars: number, ctx?: RiffCheckContext)
       }
     });
     const total = inKey + outOfKey;
-    if (ctx?.key && total >= MIN_KEY_NOTES && outOfKey / total > OUT_OF_KEY) {
-      add(`${name}: ${outOfKey} of ${total} notes are outside ${ctx.key.name}, the song's key. Keep to the key unless the guitarist asked for a change.`);
+    if (ctx?.key && total >= MIN_KEY_NOTES && outOfKey / total > (styled ? OUT_OF_KEY_STYLED : OUT_OF_KEY)) {
+      add(
+        styled
+          ? `${name}: ${outOfKey} of ${total} notes are outside ${ctx.key.name}, the song's key: more than the style needs. Keep the blue notes and chromatic runs that make the style, and bring the rest back into the key.`
+          : `${name}: ${outOfKey} of ${total} notes are outside ${ctx.key.name}, the song's key. Keep to the key unless the guitarist asked for a change.`,
+      );
     }
   });
   return out;

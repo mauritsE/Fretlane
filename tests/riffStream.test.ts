@@ -47,7 +47,7 @@ describe('riffProgress', () => {
   });
 
   it('names a part by its instrument until its name arrives, and never counts past the bars asked for', () => {
-    expect(progressLines({ explanation: '', parts: [{ name: '', instrument: 'drums', bars: 9 }] }, 8)).toEqual(['Drums: bar 8 of 8']);
+    expect(progressLines({ question: '', explanation: '', parts: [{ name: '', instrument: 'drums', bars: 9 }] }, 8)).toEqual(['Drums: bar 8 of 8']);
     expect(riffProgress('not json').parts).toEqual([]);
   });
 });

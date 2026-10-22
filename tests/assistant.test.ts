@@ -18,6 +18,8 @@ import {
   riffFromAnswer,
   riffRequestProblem,
   riffAsk,
+  riffQuestion,
+  RIFF_SYSTEM_PROMPT,
   riffUserContent,
   songText,
   MAX_SONG_CHARS,
@@ -59,7 +61,7 @@ function rockBar(): AiPart['bars'][number] {
   return { beats: [0, 1, 2, 3, 4, 5, 6, 7].map((i) => beat(8, hit(...(i % 4 === 0 ? ['kick', 'closedHiHat'] : i % 4 === 2 ? ['snare', 'closedHiHat'] : ['closedHiHat'])))) };
 }
 const part = (track: number, instrument: AiPart['instrument'], bars: AiPart['bars'], name = ''): AiPart => ({ track, instrument, name, bars });
-const answer = (...parts: AiPart[]): AiRiff => ({ explanation: 'ok', parts });
+const answer = (...parts: AiPart[]): AiRiff => ({ question: '', style: '', explanation: 'ok', parts });
 
 function parse(tex: string): alphaTab.model.Score {
   const importer = new alphaTab.importer.AlphaTexImporter();
@@ -162,6 +164,31 @@ describe('riff requests', () => {
     expect(riffRequestProblem({ ...ok, song: '' })).toMatch(/too long/);
   });
 
+  it('asks about an unclear style only when the editor can show the question, and only once', () => {
+    const doc = withNotes(song(), [1]);
+    const req = buildRiffRequest(doc, 0, { mode: 'generate', at: 3, bars: 2, prompt: 'in the style of Metallica' });
+    expect(req.canAsk).toBe(true);
+    expect(riffAsk(req)).not.toMatch(/question/i);
+    // An older app can't show a question: Claude is told to write and say what it assumed.
+    const { canAsk: _, ...older } = req;
+    expect(riffAsk(older)).toContain("This editor can't show a question: write the parts");
+    // The answer to the question: the first words stay the request, and Claude may not ask again.
+    const answered: RiffRequest = { ...req, prompt: 'the early albums', earlier: { prompt: req.prompt, question: 'Early or late Metallica?' } };
+    expect(riffRequestProblem(answered)).toBeNull();
+    expect(riffAsk(answered)).toContain('What the guitarist asked: in the style of Metallica\nYou asked them: Early or late Metallica?\nTheir answer: the early albums\nDon\'t ask another question');
+    // "Let it decide": no answer, which is fine because the request is in `earlier`.
+    const decide = { ...answered, prompt: '' };
+    expect(riffRequestProblem(decide)).toBeNull();
+    expect(riffAsk(decide)).toContain('Their answer: (none: they want you to decide.');
+    expect(riffRequestProblem({ ...answered, earlier: { prompt: 'x', question: '' } })).toMatch(/earlier/);
+    expect(riffRequestProblem({ ...answered, earlier: { prompt: 'x', question: 'q'.repeat(601) } })).toMatch(/earlier/);
+    expect(riffRequestProblem({ ...req, canAsk: 'yes' })).toMatch(/canAsk/);
+    expect(RIFF_SYSTEM_PROMPT).toContain("Don't make a style up.");
+    expect(riffQuestion({ ...answer(), question: '  Which era?  ' })).toBe('Which era?');
+    expect(riffQuestion(answer())).toBe('');
+    expect(riffQuestion(null)).toBe('');
+  });
+
   it('has a schema structured outputs accepts: every object closed and fully required', () => {
     const walk = (node: unknown): void => {
       if (!node || typeof node !== 'object') return;
@@ -183,6 +210,9 @@ describe('riffFromAnswer', () => {
   it('keeps a correct single-part riff as it is, on the existing track', () => {
     const r = riffFromAnswer({ explanation: ' A chug. ', parts: [part(1, 'guitar', [eighths([0, 0, 3, 0, 0, 5, 3, 0])])] }, song(), at0);
     expect(r.explanation).toBe('A chug.');
+    // An older website's answer has no style; a newer one's comes through trimmed.
+    expect(r.style).toBe('');
+    expect(riffFromAnswer({ ...answer(part(1, 'guitar', [eighths([0, 0, 3, 0, 0, 5, 3, 0])])), style: ' thrash chug ' }, song(), at0).style).toBe('thrash chug');
     expect(r.fixes).toEqual([]);
     expect(r.parts).toHaveLength(1);
     expect(r.parts[0].track).toBe(0);
@@ -462,6 +492,13 @@ describe('server: RiffAssistant', () => {
   // A bar of six eighths where 4/4 needs eight.
   const short: AiRiff = answer(part(1, 'guitar', [eighths([0, 0, 0, 0, 0, 0])]));
   const checked: RiffRequest = { ...req, check: { key: null, barQuarters: [4], tracks: [{ kind: 'guitar', tuning: [64, 59, 55, 50, 45, 40] }] } };
+
+  it('passes a question on without checking it: there are no parts to fix', async () => {
+    const asked = { ...answer(), question: 'Early or late Metallica?' };
+    const { client, calls } = fakeClient(text(asked));
+    expect((await askClaude(client, checked)).riff).toEqual(asked);
+    expect(calls).toHaveLength(1);
+  });
 
   it('sends the problems the checks find back once, and keeps the corrected answer', async () => {
     const { client, calls } = fakeClient(text(short), text(reply));

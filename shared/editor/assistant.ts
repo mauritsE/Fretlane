@@ -54,6 +54,13 @@ export interface RiffRequest {
   focus: string;
   /** What the server needs to check the answer (riffCheck.ts). Older apps send none. */
   check?: RiffCheckContext;
+  /**
+   * The editor can show a question from Claude instead of a riff (`question` in the answer). Older
+   * apps don't send it, and then Claude is told to write the riff without asking.
+   */
+  canAsk?: boolean;
+  /** Claude asked a question about this request: the guitarist's first words and the question. `prompt` is their answer. */
+  earlier?: { prompt: string; question: string };
 }
 
 /**
@@ -122,7 +129,14 @@ export function riffRequestProblem(req: unknown): string | null {
   if (!r || typeof r !== 'object') return 'Missing request.';
   if (r.mode !== 'improve' && r.mode !== 'generate') return 'mode must be improve or generate.';
   if (typeof r.prompt !== 'string' || r.prompt.length > MAX_PROMPT_CHARS) return `Keep the prompt under ${MAX_PROMPT_CHARS} characters.`;
-  if (r.mode === 'generate' && !r.prompt.trim()) return 'Describe the riff you want.';
+  if (r.canAsk !== undefined && typeof r.canAsk !== 'boolean') return 'canAsk must be true or false.';
+  if (r.earlier !== undefined) {
+    const e = r.earlier as Partial<RiffRequest['earlier']> | null;
+    if (!e || typeof e.prompt !== 'string' || e.prompt.length > MAX_PROMPT_CHARS || typeof e.question !== 'string' || !e.question || e.question.length > MAX_PROMPT_CHARS) {
+      return 'earlier must give the first prompt and the question asked.';
+    }
+  }
+  if (r.mode === 'generate' && !r.prompt.trim() && !r.earlier?.prompt.trim()) return 'Describe the riff you want.';
   if (!Number.isInteger(r.bars) || r.bars! < 1 || r.bars! > MAX_RIFF_BARS) return `bars must be 1 to ${MAX_RIFF_BARS}.`;
   if (typeof r.song !== 'string' || !r.song || r.song.length > MAX_SONG_CHARS) return 'The song is too long for the assistant.';
   if (typeof r.focus !== 'string' || !r.focus || r.focus.length > MAX_FOCUS_CHARS) return 'The selection is too long for the assistant. Select fewer bars.';
@@ -161,17 +175,35 @@ export interface AiPart {
   bars: { beats: AiBeat[] }[];
 }
 export interface AiRiff {
+  /** A question for the guitarist when the style they named is unclear; then there are no parts. Empty otherwise. */
+  question: string;
+  /** The concrete traits of the style the guitarist named, as Claude followed them. Empty when no style was named. */
+  style: string;
   /** One or two sentences for the user: what the riff does or what changed. */
   explanation: string;
   parts: AiPart[];
+}
+
+/** The question Claude asked instead of writing, or '' when it wrote parts. */
+export function riffQuestion(raw: unknown): string {
+  const q = (raw as { question?: unknown } | null)?.question;
+  return typeof q === 'string' ? q.trim() : '';
 }
 
 /** The JSON schema for structured outputs. Every object lists all its keys and allows no others. */
 export const RIFF_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['explanation', 'parts'],
+  required: ['question', 'style', 'explanation', 'parts'],
   properties: {
+    question: {
+      type: 'string',
+      description: 'Only when the style the guitarist named is too unclear to write from: one short question for them, and no parts. Otherwise "".',
+    },
+    style: {
+      type: 'string',
+      description: 'When the guitarist named an artist, band or genre: the concrete traits you followed, as one short phrase. Otherwise "".',
+    },
     explanation: { type: 'string', description: 'One or two plain sentences for the guitarist: what you wrote, or what you changed and why.' },
     parts: {
       type: 'array',
@@ -244,16 +276,35 @@ How to write:
 - When improving, keep what makes the riff recognisable (its key, its rhythmic identity, its best idea) unless the guitarist asks for something different, and return the same number of bars.
 - When writing something new, follow the guitarist's description, and fit the key, feel and tempo of the music that comes before it if there is any.
 - The song comes with its key and the chord in each bar, estimated from the notes. Use them as a guide; trust the notes where they disagree.
-- The explanation is one or two plain sentences: what you wrote, or what you changed. No tab, no lists.`;
+- The explanation is one or two plain sentences: what you wrote, or what you changed. No tab, no lists.
+
+Styles, artists and genres:
+- When the guitarist asks for the style of an artist, band, album or genre, first work out the concrete traits of how its guitar, bass and drum parts are written: register and tuning, rhythm and picking (down-picked palm-muted eighths, swung shuffles, syncopated sixteenths), harmony and scale (power chords, minor pentatonic with blue notes, chromatic runs, open-string drones, a mode), techniques, tempo feel and groove. Then write to those traits, not to the name. Write an original part in that style; never reproduce a real song's riff.
+- Put the traits you followed in style, as one short phrase the guitarist can check, e.g. "down-picked palm-muted eighths on the low E, chromatic walk-ups between power chords". Leave style empty when no style was named.
+- Notes outside the song's key are fine where the style calls for them (blue notes, chromatic passing notes, a darker mode); otherwise stay in the key.
+- Parts use the tracks' tunings, which you can't change. When the style depends on a tuning the track doesn't have, write it for the tuning it has and say so in the explanation.
+- Don't make a style up. Ask instead of writing when the traits are unclear: you don't know the artist or name well enough to describe how their parts are written, or the name covers very different sounds (early and late periods, a band with several styles) and neither the guitarist's words nor the song says which. Then put one short, specific question in question, ideally with two or three options to choose from ("Early Metallica, fast down-picked thrash, or the Black Album's slower, heavier groove?"; "I don't know this band well enough. How would you describe their guitar sound?"), and leave parts empty and style and explanation "".
+- Don't ask what the guitarist's words, the selected bars or the song already answer, and don't ask about choices you can make yourself (the exact notes, which chords). When nothing is unclear, question is "".`;
 
 /** The question, after the song: where to work and what the guitarist asked. */
 export function riffAsk(req: RiffRequest): string {
   const bars = `exactly ${req.bars} bar${req.bars === 1 ? '' : 's'}`;
+  // After a question, `prompt` is the answer and the request itself is in `earlier`.
+  const asked = (req.earlier?.prompt ?? req.prompt).trim();
   const ask =
     req.mode === 'improve'
-      ? `Improve the selected bars. Every part you write has ${bars}.\nWhat the guitarist asked: ${req.prompt.trim() || 'Make it better: more musical, more interesting to play, without losing its character.'}`
-      : `Write something new of ${bars} per part.\nWhat the guitarist asked: ${req.prompt.trim()}`;
-  return `${req.focus}\n\n${ask}`;
+      ? `Improve the selected bars. Every part you write has ${bars}.\nWhat the guitarist asked: ${asked || 'Make it better: more musical, more interesting to play, without losing its character.'}`
+      : `Write something new of ${bars} per part.\nWhat the guitarist asked: ${asked}`;
+  return `${req.focus}\n\n${ask}${followUp(req)}`;
+}
+
+/** After the question: the guitarist's answer to an earlier question, or that this request can't ask one. */
+function followUp(req: RiffRequest): string {
+  if (req.earlier) {
+    const answer = req.prompt.trim() || "(none: they want you to decide. Pick the likeliest reading and say which in the explanation.)";
+    return `\nYou asked them: ${req.earlier.question.trim()}\nTheir answer: ${answer}\nDon't ask another question: write the parts now.`;
+  }
+  return req.canAsk ? '' : "\nThis editor can't show a question: write the parts, and say in the explanation what you assumed.";
 }
 
 /**
@@ -400,7 +451,7 @@ export function songText(doc: SongDoc, focusBar = 0): string {
  * Builds the request for the bars selected (improve) or for something new at `at` (generate),
  * while the user is on `track`: the whole song, and a focus that names the bars and shows them (or
  * the two bars with music just before the new part) as tab on every track that has notes there,
- * and always on the user's own track.
+ * and always on the user's own track. The editor shows Claude's questions, so the request may ask one.
  */
 export function buildRiffRequest(
   doc: SongDoc,
@@ -418,7 +469,7 @@ export function buildRiffRequest(
     lines.push(`The guitarist is on track ${track + 1} "${t.name}" and selected bars ${r.from + 1}–${r.to + 1}:`);
     showRange(r.from, r.to);
     const bars = r.to - r.from + 1;
-    return { mode: 'improve', prompt: opts.prompt, bars, song: songText(doc, r.from), focus: lines.join('\n'), check: checkContext(doc, r.from, bars) };
+    return { mode: 'improve', prompt: opts.prompt, bars, song: songText(doc, r.from), focus: lines.join('\n'), check: checkContext(doc, r.from, bars), canAsk: true };
   }
   const at = Math.min(Math.max(0, opts.at), doc.bars.length);
   lines.push(
@@ -441,6 +492,7 @@ export function buildRiffRequest(
     song: songText(doc, Math.min(at, doc.bars.length - 1)),
     focus: lines.join('\n'),
     check: checkContext(doc, at, bars),
+    canAsk: true,
   };
 }
 
@@ -478,6 +530,8 @@ export interface RiffPart {
 export interface RiffResult {
   parts: RiffPart[];
   explanation: string;
+  /** The style's traits as Claude followed them ('' when no style was named). */
+  style: string;
   /** Things that were corrected, for an honest message to the user ("2 bars were trimmed to fit"). */
   fixes: string[];
 }
@@ -577,7 +631,7 @@ export function riffFromAnswer(raw: unknown, doc: SongDoc, target: RiffTarget, m
   if (!parts.some((p) => p.bars.some((v) => v.some((b) => b.notes.length)))) throw new Error('The assistant sent back a riff without any notes. Try again.');
   if (dropped) fixes.push(`${dropped} note${dropped === 1 ? '' : 's'} that didn't fit the instrument ${dropped === 1 ? 'was' : 'were'} left out.`);
   if (fitted) fixes.push(`${fitted} bar${fitted === 1 ? '' : 's'} didn't add up and ${fitted === 1 ? 'was' : 'were'} trimmed or filled with rests.`);
-  return { parts, explanation: typeof r.explanation === 'string' ? r.explanation.trim() : '', fixes };
+  return { parts, explanation: typeof r.explanation === 'string' ? r.explanation.trim() : '', style: typeof r.style === 'string' ? r.style.trim() : '', fixes };
 }
 
 function drumNote(n: Partial<AiNote> | null): DocNote | null {
