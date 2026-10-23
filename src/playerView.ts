@@ -1,6 +1,6 @@
 import * as alphaTab from '@coderline/alphatab';
 import type { Song, SyncPoint } from '../shared/types.ts';
-import { normalizeSyncPoints, shiftSyncPoints, toFlatSyncPoints, upsertSyncPoint } from '../shared/sync.ts';
+import { normalizeSyncPoints, shiftSyncPoints, tabStartTime, toFlatSyncPoints, upsertSyncPoint } from '../shared/sync.ts';
 import { APP_NAME } from '../shared/brand.ts';
 import { api } from './api.ts';
 import { formatTime, h, toast } from './dom.ts';
@@ -38,6 +38,15 @@ export async function renderPlayer(root: HTMLElement, songId: string): Promise<C
   const cleanups: Cleanup[] = [];
   let video: MediaPlayer | null = null;
   let currentBar = 0;
+  /** Where bar 1 starts in the recording; anything before it is an intro that isn't in the tab. */
+  let introEnd = 0;
+  /**
+   * alphaTab keeps its own tab position when it reloads the MIDI or gets new sync points, and seeks
+   * the recording to match. The recording is the clock, so those seeks are skipped; otherwise
+   * opening a song skips its intro and pinning bar 1 in the intro moves the recording forward.
+   */
+  let keepRecordingTime = false;
+  let resyncTab = (): void => {};
   let tapMode = false;
   let tapNextBar = 0;
 
@@ -288,6 +297,13 @@ export async function renderPlayer(root: HTMLElement, songId: string): Promise<C
         finishing = true;
         window.setTimeout(() => (finishing = false)); // stop() runs right after the event, in the same task
       });
+      at.midiLoad.on(() => {
+        keepRecordingTime = true; // loading the MIDI and its sync points follows in the same task
+        window.setTimeout(() => {
+          keepRecordingTime = false;
+          resyncTab();
+        });
+      });
       const handler: alphaTab.synth.IExternalMediaHandler = {
         get backingTrackDuration() {
           return v.duration * 1000;
@@ -305,7 +321,7 @@ export async function renderPlayer(root: HTMLElement, songId: string): Promise<C
           v.setVolume(value);
         },
         seekTo(ms: number) {
-          if (finishing && !recordingPlaying) return;
+          if (keepRecordingTime || (finishing && !recordingPlaying)) return;
           v.seek(ms / 1000);
         },
         play() {
@@ -324,12 +340,22 @@ export async function renderPlayer(root: HTMLElement, songId: string): Promise<C
       // Push the video clock into alphaTab every frame.
       let raf = 0;
       let last = -1;
+      let inIntro = false;
+      resyncTab = () => (last = -1);
       const tick = () => {
         const t = v.currentTime;
         if (t !== last && at.player) {
           last = t;
           (at.player.output as alphaTab.synth.IExternalMediaSynthOutput).updatePosition(t * 1000);
           timeEl.textContent = formatTime(t);
+        }
+        if (t < introEnd) {
+          inIntro = true;
+          const label = `Intro · bar 1 in ${Math.ceil(introEnd - t)}s`;
+          if (barEl.textContent !== label) barEl.textContent = label;
+        } else if (inIntro) {
+          inIntro = false;
+          setCurrentBar(currentBar);
         }
         if (waveform && !syncPanel.classList.contains('hidden')) waveform.draw();
         raf = requestAnimationFrame(tick);
@@ -398,6 +424,7 @@ export async function renderPlayer(root: HTMLElement, songId: string): Promise<C
     if (!useVideo) return;
     for (const mb of score.masterBars) mb.syncPoints = undefined;
     const flat = toFlatSyncPoints(song.syncPoints, barStartMs).filter((p) => p.barIndex < score.masterBars.length);
+    introEnd = Math.max(0, tabStartTime(song.syncPoints, barStartMs));
     if (flat.length) score.applyFlatSyncPoints(flat);
   }
 
@@ -406,7 +433,10 @@ export async function renderPlayer(root: HTMLElement, songId: string): Promise<C
     song.syncPoints = normalizeSyncPoints(points);
     if (at.score) {
       applySyncPoints(at.score);
+      keepRecordingTime = true;
       at.updateSyncPoints();
+      keepRecordingTime = false;
+      resyncTab();
     }
     drawSyncPanel();
     if (announce) toast(announce);
@@ -478,7 +508,8 @@ export async function renderPlayer(root: HTMLElement, songId: string): Promise<C
         waveform
           ? 'Click the first beat of a bar in the waveform (it snaps to the note), then pin that bar. '
           : `Pause the ${noun} exactly on the first beat of a bar, then pin that bar to the current ${noun} time. `,
-        'One pin sets the start; add more pins to follow tempo changes in the recording.',
+        'One pin sets the start; add more pins to follow tempo changes in the recording. ',
+        `If the ${noun} has an intro that isn't in the tab, pin bar 1 where the tab starts: the intro plays first, and ⏮ goes back to it.`,
       ),
       waveform?.el ?? null,
       h(
@@ -574,10 +605,12 @@ export async function renderPlayer(root: HTMLElement, songId: string): Promise<C
   // ---------- controls ----------
   playBtn.onclick = () => at.playPause();
   stopBtn.onclick = () => {
+    keepRecordingTime = true; // stop() would seek the recording to bar 1, skipping an intro
     at.stop();
+    keepRecordingTime = false;
     if (video) {
       video.pause();
-      video.seek(song.syncPoints[0]?.time ?? 0);
+      video.seek(0); // the start of the recording, so an intro before bar 1 plays too
     }
   };
   speedSel.onchange = () => {

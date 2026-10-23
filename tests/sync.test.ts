@@ -1,8 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { bpmBetween, normalizeSyncPoints, shiftSyncPoints, toFlatSyncPoints, upsertSyncPoint } from '../shared/sync.ts';
+import { bpmBetween, normalizeSyncPoints, shiftSyncPoints, tabStartTime, toFlatSyncPoints, upsertSyncPoint } from '../shared/sync.ts';
 
 // 2000 ms per bar
 const barStartMs = (bar: number) => bar * 2000;
+
+describe('tabStartTime', () => {
+  it('is 0:00 without pins', () => {
+    expect(tabStartTime([], barStartMs)).toBe(0);
+  });
+  it('is the bar-1 pin when the recording has an intro', () => {
+    expect(tabStartTime([{ bar: 0, time: 12.5 }, { bar: 4, time: 20 }], barStartMs)).toBe(12.5);
+  });
+  it('extrapolates back from a later pin, before 0:00 when the tab starts earlier than the recording', () => {
+    expect(tabStartTime([{ bar: 2, time: 10 }], barStartMs)).toBe(6);
+    expect(tabStartTime([{ bar: 3, time: 1 }], barStartMs)).toBe(-5);
+  });
+});
 
 describe('toFlatSyncPoints', () => {
   it('returns [] for empty input', () => {
