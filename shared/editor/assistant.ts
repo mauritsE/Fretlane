@@ -448,7 +448,7 @@ export function buildRiffRequest(
  * What the server checks the answer against: the key, the length of each bar from `from` on (new
  * bars after the end take the last bar's time signature), and every track's tuning.
  */
-function checkContext(doc: SongDoc, from: number, bars: number): RiffCheckContext {
+export function checkContext(doc: SongDoc, from: number, bars: number): RiffCheckContext {
   const last = doc.bars[doc.bars.length - 1].ts;
   return {
     key: songHarmony(doc).key,
